@@ -72,8 +72,14 @@ class UnsecureAgent:
 
 def _to_json(data: dict) -> str:
     import json
+    from decimal import Decimal
 
-    return json.dumps(data, ensure_ascii=False)
+    def _default(o):
+        if isinstance(o, Decimal):
+            return float(o)
+        raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
+
+    return json.dumps(data, ensure_ascii=False, default=_default)
 
 
 def build_default_agent() -> UnsecureAgent:

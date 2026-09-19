@@ -34,5 +34,6 @@ def postgres_dsn(settings: Settings) -> str:
     return (
         f"host={settings.postgres_host} port={settings.postgres_port} "
         f"dbname={settings.postgres_db} user={settings.postgres_user} "
-        f"password={settings.postgres_password.get_secret_value()}"
+        f"password={settings.postgres_password.get_secret_value()} "
+        f"sslmode=disable gssencmode=disable connect_timeout=10"
     )

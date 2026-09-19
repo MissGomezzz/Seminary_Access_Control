@@ -125,5 +125,14 @@ Las variables `LLM_*` no dependen de un proveedor. El límite de gasto se config
 - [Baseline Unsecure](/docs/BASELINE_UNSECURE.md): mapa de esta entrega (Hito 1) a código y tests.
 - [Arquitectura](/docs/ARQUITECTURA.md): diseño completo de la arquitectura Secure.
 
+## Evidencias iniciales - Pruebas con arquitectura insegura
+
+Después de correr los distintos comandos para poner a prueba el chat LLM, fue posible evidenciar la falta de autorización para poder acceder a información sensible. 
+
+A continuación se muestran unas pruebas con preguntas sencillas sobre datos que están almacenados en PostgreSQL, en la base de datos creada junto con los seeds de prueba, en la carpeta de /db. 
+
+![Primera prueba LLM](/docs/img/first-test.png)
+
+El LLM solo preguntó por un nombre de usuario, pero no pidió contraseña ni algún tipo de autenticador o verificación de la identidiad. 
 
 ---
