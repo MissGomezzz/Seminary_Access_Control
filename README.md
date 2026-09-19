@@ -8,10 +8,10 @@ Este repositorio recoge el seminario de Fundamentos de Seguridad de la Informaci
 
 El seminario avanza en dos capas que conviven en el mismo repositorio:
 
-1. **Arquitectura Unsecure (B1)** — **implementada** en esta entrega (Hito 1, 05/09/2026). Es la línea base ingenua: el modelo decide qué recuperar y qué mostrar, sin ningún componente de verificación de rol. Existe a propósito, para medir y documentar la falla antes de corregirla. Ver `Documents/BASELINE_UNSECURE.md`.
-2. **Arquitectura Secure (S)** — **especificada pero aún no implementada**. El diseño completo (Keycloak, RBAC+ABAC, RLS en PostgreSQL, PDP, guardia de salida, auditoría) está en `docs/ARQUITECTURA.md`. Las carpetas correspondientes existen como esqueleto (`__init__.py` vacío) y se completan en los siguientes hitos, siguiendo las fases de la sección 10 de ese documento.
+1. **Arquitectura Unsecure (B1)** — **implementada** en esta entrega (Hito 1, 05/09/2026). Es la línea base ingenua: el modelo decide qué recuperar y qué mostrar, sin ningún componente de verificación de rol. Existe a propósito, para medir y documentar la falla antes de corregirla. Ver [BASELINE UNSECURE](/docs/BASELINE_UNSECURE.md). 
+2. **Arquitectura Secure (S)** — **especificada pero aún no implementada**. El diseño completo (Keycloak, RBAC+ABAC, RLS en PostgreSQL, PDP, guardia de salida, auditoría) está en [ARQUITECTURA](/docs/ARQUITECTURA.md). Las carpetas correspondientes existen como esqueleto (`__init__.py` vacío) y se completan en los siguientes hitos, siguiendo las fases de la sección 10 de ese documento.
 
-No mezcles las dos: el código de `acxes/*_unsecure.py` y `acxes/retrieval/unsecure_tool.py` es intencionalmente inseguro y solo existe para la comparación B1 vs. S descrita en `Documents/UMBRALES_EVALUACION.md`.
+El código de `acxes/*_unsecure.py` y `acxes/retrieval/unsecure_tool.py` es intencionalmente inseguro y solo existe para la comparación B1 vs. S descrita en [UMBRALES EVALUACIÓN](/docs/UMBRALES_EVALUACION.md)
 
 ## Estructura del proyecto (scaffolding)
 
@@ -54,7 +54,7 @@ docs/
 └── ARQUITECTURA.md   # diseño completo de la arquitectura Secure (S)
 ```
 
-Regla simple para orientarte: si un archivo tiene `unsecure` en el nombre, o vive en `retrieval/` o `edge_api/` con ese sufijo, es parte de B1. Todo lo demás en `acxes/` que hoy solo tiene `__init__.py` es un esqueleto reservado para S.
+Si un archivo tiene `unsecure` en el nombre, o vive en `retrieval/` o `edge_api/` con ese sufijo, es parte de B1. Todo lo demás en `acxes/` que hoy solo tiene `__init__.py` es un esqueleto reservado para S.
 
 ## Puesta en marcha
 
@@ -120,7 +120,10 @@ Las variables `LLM_*` no dependen de un proveedor. El límite de gasto se config
 
 ## Documentación
 
-- `Documents/MATRIZ_ACCESO.md`, `Documents/POLITICAS_ACCESO.md`: matriz y políticas de acceso aprobadas, guía de diseño para la arquitectura Secure.
-- `Documents/UMBRALES_EVALUACION.md`: umbrales de evaluación B1/B2/S.
-- `Documents/BASELINE_UNSECURE.md`: mapa de esta entrega (Hito 1) a código y tests.
-- `docs/ARQUITECTURA.md`: diseño completo de la arquitectura Secure.
+- [Matriz de acceso](/docs/MATRIZ_ACCESO.md), [Políticas de acceso](/docs/POLITICAS_ACCESO.md): matriz y políticas de acceso aprobadas, guía de diseño para la arquitectura Secure.
+- [Umbrales de evaluación](/docs/UMBRALES_EVALUACION.md): umbrales de evaluación B1/B2/S.
+- [Baseline Unsecure](/docs/BASELINE_UNSECURE.md): mapa de esta entrega (Hito 1) a código y tests.
+- [Arquitectura](/docs/ARQUITECTURA.md): diseño completo de la arquitectura Secure.
+
+
+---
