@@ -52,7 +52,6 @@ coverage.xml
 cover/
 CLAUDE.MD
 CLAUDE.md
-docs/*
 
 # Translations
 *.mo
