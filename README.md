@@ -62,14 +62,14 @@ tests/
 ├── red_team/    # PENDIENTE (Secure)
 └── rls/         # PENDIENTE (Secure)
 
-Documents/
+docs/
 ├── MATRIZ_ACCESO.md         # niveles, dependencias y roles (ya aprobada, guía a S)
 ├── POLITICAS_ACCESO.md      # reglas detalladas de acceso (guía a S)
 ├── UMBRALES_EVALUACION.md   # umbrales de evaluación B1/B2/S
 └── BASELINE_UNSECURE.md     # mapa Hito 1 → código → tests, de esta entrega
-
-docs/
 └── ARQUITECTURA.md   # diseño completo de la arquitectura Secure (S)
+├── img/         # imágenes de pruebas realizadas
+
 ```
 
 Si un archivo tiene `unsecure` en el nombre, o vive en `retrieval/` o `edge_api/` con ese sufijo, es parte de B1. Todo lo demás en `acxes/` que hoy solo tiene `__init__.py` es un esqueleto reservado para S.
