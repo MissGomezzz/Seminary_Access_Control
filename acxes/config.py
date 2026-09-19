@@ -21,7 +21,18 @@ class Settings(BaseSettings):
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "acxes"
+    postgres_user: str = "acxes_owner"
+    postgres_password: SecretStr = SecretStr("")
 
 
 def get_settings() -> Settings:
     return Settings()
+
+
+def postgres_dsn(settings: Settings) -> str:
+    """DSN de conexión. Solo la capa de recuperación debe llamar a esto."""
+    return (
+        f"host={settings.postgres_host} port={settings.postgres_port} "
+        f"dbname={settings.postgres_db} user={settings.postgres_user} "
+        f"password={settings.postgres_password.get_secret_value()}"
+    )
