@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/acxes-Artificial-Inteligence-access-control.iml" filepath="$PROJECT_DIR$/.idea/acxes-Artificial-Inteligence-access-control.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/acxes.iml" filepath="$PROJECT_DIR$/.idea/acxes.iml" />
     </modules>
   </component>
 </project>
