@@ -66,9 +66,9 @@ docs/
 ├── MATRIZ_ACCESO.md         # niveles, dependencias y roles (ya aprobada, guía a S)
 ├── POLITICAS_ACCESO.md      # reglas detalladas de acceso (guía a S)
 ├── UMBRALES_EVALUACION.md   # umbrales de evaluación B1/B2/S
-└── BASELINE_UNSECURE.md     # mapa Hito 1 → código → tests, de esta entrega
-└── ARQUITECTURA.md   # diseño completo de la arquitectura Secure (S)
-├── img/         # imágenes de pruebas realizadas
+├── BASELINE_UNSECURE.md     # mapa Hito 1 → código → tests, de esta entrega
+├── ARQUITECTURA.md   # diseño completo de la arquitectura Secure (S)
+└── img/         # imágenes de pruebas realizadas
 
 ```
 
