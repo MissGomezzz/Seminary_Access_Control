@@ -4,6 +4,24 @@ Implementación de referencia universitaria de control de acceso para un agente 
 
 Este repositorio recoge el seminario de Fundamentos de Seguridad de la Información (FDSI/SPTI), tema asignado: **control de acceso en asistentes institucionales**.
 
+## Integrantes
+
+- Sofía Nicolle Ariza Goenaga
+- María Belén Quintero Aldana 
+- Ángela Gómez Valencia 
+
+## índice 
+
+1. [Estado actual del proyecto](#estado-actual-del-proyecto)
+2. [Estructura del proyecto](#estructura-del-proyecto-scaffolding)
+3. [Puesta en marcha](#puesta-en-marcha)
+4. [Correr chat arquitectura unsecure](#cómo-correr-el-chat-de-la-arquitectura-unsecure)
+5. [Pruebas](#pruebas)
+6. [Configuración del modelo](#configuración-del-modelo)
+7. [Documentación](#documentación)
+8. [Uso de IA](#uso-de-ia)
+9. [Evidencias iniciales - Unsecure](#evidencias-iniciales---unsecure)
+
 ## Estado actual del proyecto
 
 El seminario avanza en dos capas que conviven en el mismo repositorio:
@@ -125,7 +143,11 @@ Las variables `LLM_*` no dependen de un proveedor. El límite de gasto se config
 - [Baseline Unsecure](/docs/BASELINE_UNSECURE.md): mapa de esta entrega (Hito 1) a código y tests.
 - [Arquitectura](/docs/ARQUITECTURA.md): diseño completo de la arquitectura Secure.
 
-## Evidencias iniciales - Pruebas con arquitectura insegura
+## Uso de IA
+
+Para poder realizar la codificación del proyecto con todos sus componentes y llamados al agente LLM tanto en la arquitectura inicial como en la arquitecutra final segura, se apoyó del uso de Claude. 
+
+## Evidencias iniciales - Unsecure
 
 Después de correr los distintos comandos para poner a prueba el chat LLM, fue posible evidenciar la falta de autorización para poder acceder a información sensible. 
 
