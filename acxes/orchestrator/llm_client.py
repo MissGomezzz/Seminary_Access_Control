@@ -1,27 +1,71 @@
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from acxes.config import Settings
 
 
+class LLMInfrastructureError(Exception):
+    """Fallo del proveedor o de la red. El mensaje es genérico y nunca incluye la clave
+    ni el cuerpo de la respuesta. En las corridas de evaluación se marca y se repite."""
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    """Definición de una herramienta que se ofrece al modelo. `parameters` es un esquema JSON."""
+
+    name: str
+    description: str
+    parameters: dict
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    id: str
+    name: str
+    arguments: dict = field(default_factory=dict)
+    # Se rellena si el proveedor entregó argumentos que no son JSON válido
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class Usage:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
 @dataclass(frozen=True)
 class LLMMessage:
     role: str
     content: str
+    # Solo en mensajes del asistente que piden herramientas
+    tool_calls: tuple[ToolCall, ...] = ()
+    # Solo en mensajes con rol "tool"
+    tool_call_id: str | None = None
 
 
 @dataclass(frozen=True)
 class LLMResponse:
     text: str
-    tool_calls: tuple[dict, ...] = field(default_factory=tuple)
+    tool_calls: tuple[ToolCall, ...] = ()
+    usage: Usage = field(default_factory=Usage)
 
 
 class LLMClient(Protocol):
     """Contrato mínimo e independiente del proveedor."""
 
-    def complete(self, system: str, messages: list[LLMMessage]) -> LLMResponse: ...
+    def complete(
+        self,
+        system: str,
+        messages: list[LLMMessage],
+        tools: tuple[ToolSpec, ...] = (),
+    ) -> LLMResponse: ...
 
 
 class MockLLMClient:
@@ -31,69 +75,153 @@ class MockLLMClient:
         self._canned = canned
         self.calls: list[tuple[str, list[LLMMessage]]] = []
 
-    def complete(self, system: str, messages: list[LLMMessage]) -> LLMResponse:
+    def complete(
+        self,
+        system: str,
+        messages: list[LLMMessage],
+        tools: tuple[ToolSpec, ...] = (),
+    ) -> LLMResponse:
         self.calls.append((system, list(messages)))
         return LLMResponse(text=self._canned)
 
 
-class NaiveMockLLMClient:
-    """Simula, de forma determinista y sin red, a un modelo sin restricciones
-    propias: pide cualquier dato con solo reconocer la intención en el texto
-    del usuario, y comparte sin filtrar lo que la herramienta le devuelve.
+_STOPWORDS = frozenset(
+    [
+        "cual",
+        "cuales",
+        "como",
+        "donde",
+        "quien",
+        "quienes",
+        "para",
+        "pero",
+        "porque",
+        "sobre",
+        "entre",
+        "hacia",
+        "desde",
+        "hasta",
+        "esta",
+        "este",
+        "esto",
+        "estos",
+        "estas",
+        "puedes",
+        "puede",
+        "podria",
+        "dime",
+        "dame",
+        "quiero",
+        "necesito",
+        "favor",
+        "todos",
+        "todas",
+        "cada",
+        "tiene",
+        "tienen",
+        "sido",
+        "ser",
+        "son",
+        "con",
+        "sin",
+        "por",
+        "que",
+        "los",
+        "las",
+        "del",
+        "una",
+        "uno",
+        "unos",
+        "unas",
+        "sus",
+        "mis",
+        "tus",
+        "nos",
+        "les",
+    ]
+)
 
-    Esto NO es un modelo de lenguaje real: es un doble de prueba que reproduce
-    a propósito el punto ciego de autorización descrito en la sección 1 del
-    Hito 1, para poder probar la arquitectura Unsecure (B1) de forma
-    reproducible en CI, sin llamadas de red ni gasto en tokens. Cuando se
-    quiera repetir el experimento contra un modelo real, basta con
-    intercambiar este cliente por el que se implemente en la etapa 4
-    (`LLM_CLIENT=real`) sin tocar el resto del agente.
+
+def _strip_accents(text: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
+
+
+class NaiveMockLLMClient:
+    """Simula, de forma determinista y sin red, a un modelo sin restricciones propias:
+    convierte la petición del usuario en una búsqueda de palabras clave y comparte sin
+    filtrar lo que la herramienta le devuelve.
+
+    No es un modelo de lenguaje real. Es un doble de prueba que reproduce el punto ciego
+    de autorización de B1 para poder probarla en CI sin red ni gasto en tokens. Con
+    `LLM_CLIENT=real` el agente usa Groq sin tocar el resto del código.
     """
 
-    _INTENTS: tuple[tuple[re.Pattern, str, str], ...] = (
-        (re.compile(r"salari?o d[e|el]\s+([\wÁÉÍÓÚÑÜáéíóúñü ]+)", re.IGNORECASE),
-         "consultar_salario", "nombre_empleado"),
-        (re.compile(r"equipo (?:de|que dirige|que lidera)\s+([\wÁÉÍÓÚÑÜáéíóúñü ]+)", re.IGNORECASE),
-         "consultar_equipo", "nombre_supervisor"),
-        (re.compile(r"reporte\s+(?:global\s+)?de\s+n[oó]mina", re.IGNORECASE),
-         "reporte_nomina_global", None),
-    )
+    _WORD = re.compile(r"[\wÁÉÍÓÚÑÜáéíóúñü]+")
+    MIN_KEYWORDS = 3
+    MAX_KEYWORDS = 8
 
-    def complete(self, system: str, messages: list[LLMMessage]) -> LLMResponse:
+    def __init__(self) -> None:
+        self._counter = 0
+
+    def complete(
+        self,
+        system: str,
+        messages: list[LLMMessage],
+        tools: tuple[ToolSpec, ...] = (),
+    ) -> LLMResponse:
         last = messages[-1]
 
         if last.role == "tool":
             return LLMResponse(text=self._render(json.loads(last.content)))
 
-        for pattern, tool_name, arg_name in self._INTENTS:
-            match = pattern.search(last.content)
-            if match:
-                args = {arg_name: match.group(1).strip()} if arg_name else {}
-                return LLMResponse(text="", tool_calls=({"name": tool_name, "arguments": args},))
+        keywords = self._keywords(last.content)
+        if len(keywords) < self.MIN_KEYWORDS:
+            return LLMResponse(text="No encontré una consulta clara sobre documentos.")
+        self._counter += 1
+        call = ToolCall(
+            id=f"call_{self._counter}",
+            name="buscar_documentos",
+            arguments={"keywords": keywords},
+        )
+        return LLMResponse(text="", tool_calls=(call,))
 
-        return LLMResponse(text="No encontré una consulta clara sobre nómina o equipos.")
+    def _keywords(self, text: str) -> list[str]:
+        words = self._WORD.findall(text)
+        # Los nombres propios (con mayúscula, salvo la primera palabra) van primero
+        proper = [w for i, w in enumerate(words) if i > 0 and w[0].isupper() and len(w) > 2]
+        common = [
+            w
+            for w in words
+            if w not in proper and len(w) >= 4 and _strip_accents(w.lower()) not in _STOPWORDS
+        ]
+        ordered = list(dict.fromkeys(proper + common))
+        return [w[:40] for w in ordered[: self.MAX_KEYWORDS]]
 
     @staticmethod
     def _render(data: dict) -> str:
+        if "error" in data:
+            return "No pude completar la consulta."
+        resultados = data.get("resultados")
+        if resultados is not None:
+            if not resultados:
+                return "No encontré información sobre eso."
+            filas = " | ".join(
+                f"[{r['chunk_id']}] {r['title']}: {r['content']}" for r in resultados
+            )
+            return f"Encontré lo siguiente: {filas}"
         if data.get("encontrado") is False:
-            return "No encontré a esa persona en la base."
-        if "salary" in data:
-            return f"El salario de {data['full_name']} ({data['role']}) es ${data['salary']:,.0f}."
-        if "miembros" in data:
-            filas = ", ".join(
-                f"{m['full_name']} (${m['salary']:,.0f})" for m in data["miembros"]
-            )
-            return f"El equipo {data['equipo']} está compuesto por: {filas}."
-        if "empleados" in data:
-            filas = ", ".join(
-                f"{e['full_name']}: ${e['salary']:,.0f}" for e in data["empleados"]
-            )
-            return f"Reporte global de nómina: {filas}."
+            return "No encontré ese documento."
+        if "chunks" in data:
+            cuerpo = " ".join(c["content"] for c in data["chunks"])
+            return f"Documento {data['title']}: {cuerpo}"
         return "No tengo información suficiente para responder."
 
 
 def build_llm_client(settings: Settings) -> LLMClient:
     if settings.llm_client == "mock":
         return MockLLMClient()
-    # El cliente real se implementa en la etapa 4, cuando se elija proveedor
-    raise NotImplementedError("Cliente real pendiente de la etapa 4")
+    if settings.llm_provider.lower() != "groq":
+        raise ValueError("LLM_CLIENT=real requiere LLM_PROVIDER=groq")
+    from acxes.orchestrator.groq_client import GroqLLMClient
+
+    return GroqLLMClient(settings)

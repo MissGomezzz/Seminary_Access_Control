@@ -10,6 +10,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "pyjwt[crypto]>=2.9",
     "pyyaml>=6.0",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,10 @@ include = ["acxes*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "db: requiere PostgreSQL con el esquema aplicado (python -m acxes.db.apply)",
+    "llm_real: llama al modelo real y requiere clave, se omite sin ella",
+]
 
 [tool.ruff]
 line-length = 100
