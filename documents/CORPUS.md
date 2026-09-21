@@ -1,6 +1,6 @@
 # Corpus sintético
 
-Estado: plan, herramientas y 150 cuerpos de documentos implementados y versionados. Los cuerpos se generaron conforme a los criterios establecidos. Todo el contenido es ficticio.
+Estado: plan, herramientas y 150 cuerpos de documentos implementados, versionados e ingeridos (150 documentos y 174 fragmentos). Pendiente la revisión manual de la muestra. Todo el contenido es ficticio.
 
 ## Composición
 
@@ -34,7 +34,15 @@ Fragmentos de 500 a 800 tokens con solape de entre el 10 y el 15 por ciento, cor
 
 ## Generación del corpus
 
-Los 150 cuerpos de documentos ya están generados y versionados en `data/corpus/docs/`. Cada archivo respeta el contrato `GeneratedDoc` de Pydantic: slug, body, model e generated_at. Los cuerpos cumplen criterios de validación: extensión mínima por tipo, ausencia de patrones prohibidos (canarios, correos, URLs, teléfonos, bloques de código), coherencia con clasificación y owner. Toda generación fue validada según políticas de contenido establecidas en `acxes/ingestion/generate.py`.
+Los 150 cuerpos de documentos están redactados y versionados en `data/corpus/docs/`. Cada archivo respeta el contrato `GeneratedDoc` de Pydantic: slug, body, model e generated_at, y el campo `model` indica quién lo redactó. Las reglas de contenido de `acxes/ingestion/generate.py` (`validate_body`) son extensión mínima por tipo, ausencia de patrones prohibidos (canarios, correos, URLs, teléfonos, bloques de código) y coherencia con el dueño. No todos los cuerpos las cumplen:
+
+- Los 20 documentos de `academica/interno` se redactaron el 2026-09-21 y cumplen todas las reglas. Sustituyeron archivos vacíos.
+- De los otros 130, 116 no alcanzan el 85 por ciento de la extensión pedida. La mediana es el 25 por ciento y el mínimo es un informe de auditoría de 38 palabras pedido a 700. Once contienen un correo electrónico y tres una dirección web. Son una excepción aceptada por el equipo y está registrada en `docs/DESVIACIONES.md`.
+- Consecuencia: 174 fragmentos para 150 documentos, casi todos en un solo fragmento. Limita la utilidad del golden set de la etapa 3.
+
+Para listar los que no cumplen, valide cada cuerpo con `validate_body`. Un documento que se regenere sí queda sujeto a esas reglas.
+
+Antes de recrear el esquema, `apply` verifica que cada archivo sea un `GeneratedDoc` válido y que corresponda al plan (`verify_corpus`), de modo que un archivo vacío o dañado detiene la carga sin tocar la base.
 
 Si es necesario regenerar documentos específicos, se pueden eliminar archivos y ejecutar el generador disponible. El mecanismo es reanudable: `python -m acxes.ingestion.generate --only <slug>` después de borrar el archivo deseado regenera solo ese documento. Para regeneración masiva, el sistema ofrece generate.py que puede ser invocado con proveedores LLM configurados en variables de entorno (LLM_CLIENT, LLM_PROVIDER, LLM_API_KEY, LLM_MODEL_BULK).
 

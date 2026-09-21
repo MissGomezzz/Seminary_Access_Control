@@ -75,8 +75,17 @@ def _check_files(specs: list[DocSpec], docs_dir: Path) -> None:
 
 
 def verify_corpus(docs_dir: Path = DOCS_DIR) -> None:
-    """Falla si el plan y los cuerpos no coinciden. Se llama antes de tocar la base."""
-    _check_files(load_plan(), docs_dir)
+    """Falla si el plan y los cuerpos no coinciden o si algún archivo no es válido.
+    Se llama antes de tocar la base, para no recrear el esquema y dejarla vacía."""
+    specs = load_plan()
+    _check_files(specs, docs_dir)
+    for spec in specs:
+        try:
+            generated = load_generated(spec.slug, docs_dir)
+        except ValueError as exc:
+            raise CorpusError(f"El archivo de {spec.slug} no es un cuerpo válido") from exc
+        if generated is None or generated.slug != spec.slug:
+            raise CorpusError(f"El cuerpo de {spec.slug} no corresponde al plan")
 
 
 def load_corpus(
