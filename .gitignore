@@ -152,14 +152,18 @@ activemq-data/
 *.sage.py
 
 # Environments
+env
+env.example
 .env
 .envrc
+.env.example
+*.env.*
 .venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+env/*
+venv/*
+ENV/*
+env.bak/*
+venv.bak/*
 
 # Spyder project settings
 .spyderproject

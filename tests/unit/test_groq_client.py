@@ -72,6 +72,36 @@ def test_sin_herramientas_no_se_envia_tool_choice():
     assert "tools" not in body and "tool_choice" not in body
 
 
+def test_el_modo_json_pide_response_format_solo_cuando_se_activa():
+    vistas: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistas.append(request)
+        return _ok({"content": "{}"})
+
+    client, _ = _client(handler)
+    client.complete("s", [LLMMessage("user", "p")])
+    client.complete("s", [LLMMessage("user", "p")], json_mode=True)
+
+    assert "response_format" not in json.loads(vistas[0].content)
+    assert json.loads(vistas[1].content)["response_format"] == {"type": "json_object"}
+
+
+def test_un_modelo_explicito_sustituye_al_del_agente():
+    vistas: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistas.append(request)
+        return _ok({"content": "hola"})
+
+    client = GroqLLMClient(
+        _groq_settings(), model="otro-modelo", transport=httpx.MockTransport(handler)
+    )
+    client.complete("s", [LLMMessage("user", "p")])
+
+    assert json.loads(vistas[0].content)["model"] == "otro-modelo"
+
+
 def test_las_llamadas_de_herramienta_se_analizan_y_se_reenvian_con_su_id():
     vistas: list[httpx.Request] = []
     respuestas = [

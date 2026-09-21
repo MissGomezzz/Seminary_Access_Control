@@ -5,18 +5,17 @@ restringe ese rol, B1 empezaría a respetar RLS y la comparación con S dejaría
 diferencia de arquitectura. Requiere `python -m acxes.db.apply`.
 """
 
-from uuid import UUID
-
 import psycopg
 import pytest
 
 from acxes.config import get_settings, postgres_dsn
 from acxes.db.repository import PostgresInstitutionalRepository
+from acxes.ingestion.canary import canary_for
+from acxes.ingestion.corpus_plan import doc_uuid, load_plan
 
 pytestmark = pytest.mark.db
 
-ACTA_COMITE = UUID("00000000-0000-4000-b000-000000000012")
-CANARY_ACTA_COMITE = "ACXES-CNRY-H5X2W6NC"
+ACTA_COMITE = "acta-del-comite-disciplinario-2026-01"
 
 
 def test_la_conexion_de_b1_ignora_rls():
@@ -26,7 +25,7 @@ def test_la_conexion_de_b1_ignora_rls():
         ).fetchone()[0]
         total = conn.execute("SELECT count(*) FROM chunks").fetchone()[0]
     assert ignora is True
-    assert total == 24
+    assert total >= len(load_plan())  # al menos un fragmento por documento
 
 
 def test_el_rol_de_aplicacion_sin_variables_ve_cero_filas_donde_b1_ve_todo():
@@ -37,11 +36,15 @@ def test_el_rol_de_aplicacion_sin_variables_ve_cero_filas_donde_b1_ve_todo():
 def test_b1_recupera_un_acta_restringida_sin_ninguna_etiqueta():
     repo = PostgresInstitutionalRepository(get_settings())
 
-    hits = repo.search_chunks(["acta", "comité", "disciplinario"], 5)
-    doc = repo.get_document(ACTA_COMITE)
+    canarios = {
+        canary_for(s.slug) for s in load_plan() if "comite_disciplinario" in s.acl_tags
+    }
 
-    assert any(CANARY_ACTA_COMITE in h.content for h in hits)
-    assert doc is not None and CANARY_ACTA_COMITE in doc.chunks[0].content
+    hits = repo.search_chunks(["acta", "comité", "disciplinario"], 5)
+    doc = repo.get_document(doc_uuid(ACTA_COMITE))
+
+    assert any(c in h.content for h in hits for c in canarios)
+    assert doc is not None and canary_for(ACTA_COMITE) in doc.chunks[0].content
 
 
 def test_b1_lista_los_seis_usuarios_de_prueba_con_su_rol():

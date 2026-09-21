@@ -1,0 +1,6 @@
+{
+  "slug": "aviso-de-simulacro-de-seguridad",
+  "body": "Aviso de simulacro de seguridad\n\nA toda la comunidad del Instituto Universitario Meridiano\n\nAsunto: Simulacro de seguridad de la información. Recomendaciones para el personal.\n\nSe realizará un simulacro de seguridad de la información el miércoles 31 de enero de 2026, entre las 10:00 y las 12:00 horas. El objetivo es reforzar conciencia sobre protección de datos y evaluar respuesta ante intentos de acceso no autorizado.\n\nDurante el simulacro, el personal de TI enviará correos solicitando contraseñas o información sensible. Estos correos son parte del ejercicio. Recomendaciones para el personal: no haga clic en enlaces sospechosos, no descargue archivos sin confirmar remitente, no comparta contraseñas por correo, y reporte cualquier correo sospechoso a soporte@meridiano.edu.\n\nSi recibe un correo sospechoso, responda indicando que es sospechoso o reenvíe al área de seguridad. Participar activamente ayuda a fortalecer la seguridad institucional. Agradecemos su atención a estas recomendaciones.",
+  "model": "claude-haiku-4-5-20251001",
+  "generated_at": "2026-09-21T21:00:00Z"
+}

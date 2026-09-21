@@ -32,16 +32,21 @@ class GroqLLMClient:
         self,
         settings: Settings,
         *,
+        model: str | None = None,
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        """`model` sustituye a `LLM_MODEL_AGENT`, por ejemplo con `LLM_MODEL_BULK` para
+        generar el corpus."""
         api_key = settings.llm_api_key.get_secret_value()
-        if not (settings.llm_base_url and api_key and settings.llm_model_agent):
+        # Un modelo explícito vacío no cae en el del agente: falla por configuración incompleta
+        chosen_model = settings.llm_model_agent if model is None else model
+        if not (settings.llm_base_url and api_key and chosen_model):
             raise ValueError(
                 "Configuración del modelo incompleta: defina LLM_BASE_URL, LLM_API_KEY "
-                "y LLM_MODEL_AGENT en .env"
+                "y el modelo (LLM_MODEL_AGENT o LLM_MODEL_BULK) en .env"
             )
-        self._model = settings.llm_model_agent
+        self._model = chosen_model
         self._temperature = settings.llm_temperature
         self._max_tokens = settings.llm_max_tokens
         self._max_retries = settings.llm_max_retries
@@ -60,6 +65,8 @@ class GroqLLMClient:
         system: str,
         messages: list[LLMMessage],
         tools: tuple[ToolSpec, ...] = (),
+        *,
+        json_mode: bool = False,
     ) -> LLMResponse:
         payload: dict = {
             "model": self._model,
@@ -67,6 +74,9 @@ class GroqLLMClient:
             "temperature": self._temperature,
             "max_tokens": self._max_tokens,
         }
+        if json_mode:
+            # El modo JSON de Groq exige que el prompt pida JSON. No se combina con herramientas
+            payload["response_format"] = {"type": "json_object"}
         if tools:
             payload["tools"] = [
                 {

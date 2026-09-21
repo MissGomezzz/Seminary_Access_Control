@@ -47,6 +47,17 @@ def test_real_client_builds_the_groq_client():
     assert isinstance(build_llm_client(_groq_settings()), GroqLLMClient)
 
 
+def test_bulk_purpose_uses_the_bulk_model():
+    settings = _groq_settings(llm_model_bulk="modelo-masivo")
+    assert build_llm_client(settings, "agent")._model == "modelo-de-prueba"
+    assert build_llm_client(settings, "bulk")._model == "modelo-masivo"
+
+
+def test_bulk_purpose_requires_the_bulk_model():
+    with pytest.raises(ValueError, match="incompleta"):
+        build_llm_client(_groq_settings(llm_model_bulk=""), "bulk")
+
+
 def test_api_key_is_not_exposed_in_repr():
     settings = Settings(_env_file=None, llm_api_key="secreto-de-prueba")
     assert "secreto-de-prueba" not in repr(settings)

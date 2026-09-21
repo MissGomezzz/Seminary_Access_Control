@@ -2,7 +2,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Literal, Protocol
 
 from acxes.config import Settings
 
@@ -65,6 +65,8 @@ class LLMClient(Protocol):
         system: str,
         messages: list[LLMMessage],
         tools: tuple[ToolSpec, ...] = (),
+        *,
+        json_mode: bool = False,
     ) -> LLMResponse: ...
 
 
@@ -80,6 +82,8 @@ class MockLLMClient:
         system: str,
         messages: list[LLMMessage],
         tools: tuple[ToolSpec, ...] = (),
+        *,
+        json_mode: bool = False,
     ) -> LLMResponse:
         self.calls.append((system, list(messages)))
         return LLMResponse(text=self._canned)
@@ -168,6 +172,8 @@ class NaiveMockLLMClient:
         system: str,
         messages: list[LLMMessage],
         tools: tuple[ToolSpec, ...] = (),
+        *,
+        json_mode: bool = False,
     ) -> LLMResponse:
         last = messages[-1]
 
@@ -217,11 +223,15 @@ class NaiveMockLLMClient:
         return "No tengo información suficiente para responder."
 
 
-def build_llm_client(settings: Settings) -> LLMClient:
+def build_llm_client(
+    settings: Settings, purpose: Literal["agent", "bulk"] = "agent"
+) -> LLMClient:
+    """`agent` usa `LLM_MODEL_AGENT` y `bulk` usa `LLM_MODEL_BULK`, para la generación masiva."""
     if settings.llm_client == "mock":
         return MockLLMClient()
     if settings.llm_provider.lower() != "groq":
         raise ValueError("LLM_CLIENT=real requiere LLM_PROVIDER=groq")
     from acxes.orchestrator.groq_client import GroqLLMClient
 
-    return GroqLLMClient(settings)
+    model = settings.llm_model_bulk if purpose == "bulk" else settings.llm_model_agent
+    return GroqLLMClient(settings, model=model)

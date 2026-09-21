@@ -1,10 +1,10 @@
-"""Aplica el esquema compartido, los roles, los privilegios, RLS y el seed.
+"""Aplica el esquema compartido, los roles, los privilegios, RLS, el seed y el corpus.
 
 Uso:
     python -m acxes.db.apply
 
-Se conecta con el rol propietario. Es idempotente: recrea las tablas y los datos
-provisionales. Funciona igual en Windows, en Docker y en CI, sin necesitar `psql`.
+Se conecta con el rol propietario. Es idempotente: recrea las tablas y los datos.
+Al final ingiere el corpus versionado de data/corpus (python -m acxes.ingestion.load). Funciona igual en Windows, en Docker y en CI, sin necesitar `psql`.
 """
 
 from pathlib import Path
@@ -13,6 +13,8 @@ import psycopg
 from psycopg import sql
 
 from acxes.config import Settings, get_settings, postgres_dsn
+from acxes.ingestion.corpus_plan import DOCS_DIR
+from acxes.ingestion.load import CorpusError, LoadSummary, ingest, verify_corpus
 
 _SQL_DIR = Path(__file__).parent
 
@@ -44,16 +46,25 @@ def _ensure_roles(conn: psycopg.Connection, settings: Settings) -> None:
         )
 
 
-def apply(settings: Settings | None = None) -> None:
+def apply(settings: Settings | None = None, docs_dir: Path = DOCS_DIR) -> LoadSummary:
     settings = settings or get_settings()
+    # Antes de recrear el esquema, para no dejar la base vacía si el corpus está incompleto
+    verify_corpus(docs_dir)
     with psycopg.connect(postgres_dsn(settings), autocommit=True) as conn:
         _run_file(conn, "schema.sql")
         _ensure_roles(conn, settings)
         _run_file(conn, "grants.sql")
         _run_file(conn, "rls.sql")
         _run_file(conn, "seed.sql")
+    return ingest(settings, docs_dir)
 
 
 if __name__ == "__main__":
-    apply()
-    print("Esquema, roles, RLS y datos provisionales aplicados.")
+    try:
+        summary = apply()
+    except CorpusError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(
+        "Esquema, roles, RLS y datos base aplicados. "
+        f"Corpus ingerido: {summary.documents} documentos y {summary.chunks} fragmentos."
+    )

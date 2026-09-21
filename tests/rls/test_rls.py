@@ -2,8 +2,9 @@
 
 Se conectan como `acxes_app` y fijan las variables de sesión que el servicio de
 recuperación de S fijaría a partir del predicado del PDP (docs/VARIABLES_SESION.md).
-Los conjuntos esperados se derivan de documents/MATRIZ_ACCESO.md y están escritos a mano,
-independientes de la política, para que un error en ella no se copie a la prueba.
+Los conjuntos esperados los calcula `oracle.py` sobre el plan del corpus a partir de
+documents/MATRIZ_ACCESO.md, independiente de la política, para que un error en ella no se
+copie a la prueba. Además hay aserciones explícitas por slug.
 Requieren `python -m acxes.db.apply`.
 """
 
@@ -11,11 +12,12 @@ import psycopg
 import pytest
 
 from acxes.config import get_settings, postgres_dsn
+from acxes.ingestion.corpus_plan import DocSpec, doc_uuid, load_plan
+from tests.rls.oracle import PERSONAS, expected_slugs
 
 pytestmark = pytest.mark.db
 
 _USER = "00000000-0000-4000-a000-00000000000{}"
-_INSTITUCIONAL = set(range(1, 8))  # D01 a D07, públicos e internos de la dependencia institucional
 
 
 def _ctx(n: int, role: str, dept: str, depts: list[str], clearance: str, tags: list[str]) -> dict:
@@ -57,23 +59,32 @@ DIEGO = _ctx(
     [],
 )
 
-# Documentos visibles por usuario, por número de documento del seed
-ESPERADO = {
-    "Sofía": (SOFIA, _INSTITUCIONAL | {13, 14, 16}),
-    "Belén": (BELEN, _INSTITUCIONAL | {13, 14, 17}),
-    "Ángela": (ANGELA, _INSTITUCIONAL | {8, 9, 11, 18}),
-    "Laura": (LAURA, _INSTITUCIONAL | {13, 14, 15, 16, 17, 18, 19, 20, 21, 22}),
-    "Carlos": (CARLOS, _INSTITUCIONAL | {8, 9, 10, 11, 12, 20}),
-    "Diego": (DIEGO, _INSTITUCIONAL | {8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21}),
+CONTEXTOS = {
+    "Sofía": SOFIA,
+    "Belén": BELEN,
+    "Ángela": ANGELA,
+    "Laura": LAURA,
+    "Carlos": CARLOS,
+    "Diego": DIEGO,
 }
+
+# Restringidos sin etiquetas: ningún usuario de prueba debe verlos
+SIN_ETIQUETAS = (
+    "acta-del-comite-disciplinario-sin-etiquetas-asignadas",
+    "informe-de-auditoria-sin-etiquetas-asignadas",
+)
+ACTA_COMITE = "acta-del-comite-disciplinario-2026-01"
+INFORME_AUDITORIA = "informe-de-auditoria-interna-2026-q1"
 
 
 @pytest.fixture(scope="module")
-def titles() -> dict[int, str]:
-    """Título por número de documento. El número son los dos últimos dígitos del id."""
-    with psycopg.connect(postgres_dsn(get_settings())) as conn:
-        rows = conn.execute("SELECT right(id::text, 2)::int, title FROM documents").fetchall()
-    return dict(rows)
+def specs() -> list[DocSpec]:
+    return load_plan()
+
+
+@pytest.fixture(scope="module")
+def slug_by_id(specs) -> dict:
+    return {doc_uuid(s.slug): s.slug for s in specs}
 
 
 @pytest.fixture
@@ -96,18 +107,20 @@ def _visible(conn: psycopg.Connection, ctx: dict, table: str = "documents") -> l
         return conn.execute(f"SELECT id, {column} FROM {table}").fetchall()
 
 
-@pytest.mark.parametrize("nombre", list(ESPERADO))
-def test_cada_usuario_ve_exactamente_lo_que_dice_la_matriz(app_conn, titles, nombre):
-    ctx, numeros = ESPERADO[nombre]
-
-    vistos = {title for _, title in _visible(app_conn, ctx)}
-
-    assert vistos == {titles[n] for n in numeros}
+def _slugs(conn: psycopg.Connection, slug_by_id: dict, ctx: dict) -> set[str]:
+    return {slug_by_id[doc_id] for doc_id, _ in _visible(conn, ctx)}
 
 
-@pytest.mark.parametrize("nombre", list(ESPERADO))
+@pytest.mark.parametrize("nombre", list(CONTEXTOS))
+def test_cada_usuario_ve_exactamente_lo_que_dice_la_matriz(app_conn, specs, slug_by_id, nombre):
+    vistos = _slugs(app_conn, slug_by_id, CONTEXTOS[nombre])
+
+    assert vistos == expected_slugs(PERSONAS[nombre], specs)
+
+
+@pytest.mark.parametrize("nombre", list(CONTEXTOS))
 def test_los_fragmentos_siguen_a_sus_documentos(app_conn, nombre):
-    ctx, _ = ESPERADO[nombre]
+    ctx = CONTEXTOS[nombre]
     with app_conn.transaction():
         for name, value in ctx.items():
             app_conn.execute("SELECT set_config(%s, %s, true)", (name, value))
@@ -115,6 +128,51 @@ def test_los_fragmentos_siguen_a_sus_documentos(app_conn, nombre):
         chunk_docs = {r[0] for r in app_conn.execute("SELECT doc_id FROM chunks").fetchall()}
 
     assert chunk_docs == doc_ids
+
+
+def test_cada_empleado_ve_su_nomina_y_ninguna_ajena(app_conn, slug_by_id):
+    nominas = {
+        s for s in _slugs(app_conn, slug_by_id, SOFIA) if s.startswith("nomina-individual-")
+    }
+    assert nominas == {"nomina-individual-sofia-ariza"}
+
+
+def test_las_evaluaciones_son_de_su_dueno_incluso_entre_dependencias(app_conn, slug_by_id):
+    angela = _slugs(app_conn, slug_by_id, ANGELA)
+    assert "evaluacion-de-desempeno-angela-gomez" in angela
+    assert "evaluacion-de-desempeno-carlos-renteria" not in angela
+    # Una supervisora de otra dependencia ve la propia y no la de la dependencia ajena
+    laura = _slugs(app_conn, slug_by_id, LAURA)
+    assert "evaluacion-de-desempeno-laura-martinez" in laura
+    assert "evaluacion-de-desempeno-carlos-renteria" not in laura
+
+
+def test_restringido_solo_con_la_etiqueta_de_su_area(app_conn, slug_by_id):
+    laura = _slugs(app_conn, slug_by_id, LAURA)
+    carlos = _slugs(app_conn, slug_by_id, CARLOS)
+    assert INFORME_AUDITORIA in laura and ACTA_COMITE not in laura
+    assert ACTA_COMITE in carlos and INFORME_AUDITORIA not in carlos
+
+
+@pytest.mark.parametrize("nombre", list(CONTEXTOS))
+def test_un_restringido_sin_etiquetas_no_lo_ve_nadie(app_conn, slug_by_id, nombre):
+    assert not set(SIN_ETIQUETAS) & _slugs(app_conn, slug_by_id, CONTEXTOS[nombre])
+
+
+def test_el_administrador_ve_todo_lo_confidencial_y_nada_restringido(app_conn, specs, slug_by_id):
+    diego = _slugs(app_conn, slug_by_id, DIEGO)
+    restringidos = {s.slug for s in specs if s.sensitivity == "restringido"}
+    confidenciales = {s.slug for s in specs if s.sensitivity == "confidencial"}
+    assert confidenciales <= diego
+    assert not diego & restringidos
+
+
+@pytest.mark.parametrize("nombre", list(CONTEXTOS))
+def test_todos_ven_lo_publico_los_senuelos_y_los_documentos_con_inyeccion(
+    app_conn, specs, slug_by_id, nombre
+):
+    generales = {s.slug for s in specs if s.kind != "normal" or s.sensitivity == "publico"}
+    assert generales <= _slugs(app_conn, slug_by_id, CONTEXTOS[nombre])
 
 
 def test_sin_variables_de_sesion_no_hay_filas(app_conn):
@@ -132,20 +190,21 @@ def test_falta_el_nivel_maximo_y_no_hay_filas_por_dependencia(app_conn):
     assert _visible(app_conn, ctx) == []
 
 
-def test_un_tope_restringido_no_concede_el_nivel_restringido(app_conn, titles):
+def test_un_tope_restringido_no_concede_el_nivel_restringido(app_conn, slug_by_id):
     """Defensa en profundidad: aunque el PDP nunca lo emite, RLS no lo concede por nivel."""
     ctx = dict(DIEGO, **{"app.clearance": "restringido"})
-    vistos = {title for _, title in _visible(app_conn, ctx)}
+    vistos = _slugs(app_conn, slug_by_id, ctx)
 
-    assert titles[12] not in vistos and titles[22] not in vistos and titles[23] not in vistos
+    assert ACTA_COMITE not in vistos and INFORME_AUDITORIA not in vistos
+    assert not set(SIN_ETIQUETAS) & vistos
 
 
-def test_restringido_solo_por_etiqueta_y_sin_etiquetas_no_lo_ve_nadie(app_conn, titles):
+def test_restringido_solo_por_etiqueta_aunque_el_usuario_sea_administrador(app_conn, slug_by_id):
     ctx = dict(DIEGO, **{"app.acl_tags": "comite_disciplinario,auditoria_interna"})
-    vistos = {title for _, title in _visible(app_conn, ctx)}
+    vistos = _slugs(app_conn, slug_by_id, ctx)
 
-    assert titles[12] in vistos and titles[22] in vistos
-    assert titles[23] not in vistos
+    assert ACTA_COMITE in vistos and INFORME_AUDITORIA in vistos
+    assert not set(SIN_ETIQUETAS) & vistos
 
 
 def test_el_orden_del_enum_es_publico_interno_confidencial_restringido(owner_conn):
@@ -170,8 +229,8 @@ def test_las_etiquetas_solo_se_permiten_en_restringido(owner_conn):
         )
 
 
-def test_el_trigger_propaga_el_cambio_de_clasificacion_a_los_fragmentos(owner_conn, titles):
-    doc = "00000000-0000-4000-b000-000000000010"
+def test_el_trigger_propaga_el_cambio_de_clasificacion_a_los_fragmentos(owner_conn):
+    doc = doc_uuid("calificaciones-de-fundamentos-de-seguridad")
     with owner_conn.transaction(force_rollback=True):
         owner_conn.execute("UPDATE documents SET sensitivity = 'interno' WHERE id = %s", (doc,))
         filas = owner_conn.execute(
@@ -181,10 +240,10 @@ def test_el_trigger_propaga_el_cambio_de_clasificacion_a_los_fragmentos(owner_co
 
 
 def test_un_fragmento_nuevo_hereda_la_clasificacion_del_documento(owner_conn):
-    doc = "00000000-0000-4000-b000-000000000016"  # nómina de Sofía, confidencial con dueño
+    doc = doc_uuid("nomina-individual-sofia-ariza")  # confidencial con dueño
     with owner_conn.transaction(force_rollback=True):
         fila = owner_conn.execute(
-            "INSERT INTO chunks (doc_id, chunk_index, content) VALUES (%s, 9, 'texto') "
+            "INSERT INTO chunks (doc_id, chunk_index, content) VALUES (%s, 99, 'texto') "
             "RETURNING dept, sensitivity::text, owner_id::text",
             (doc,),
         ).fetchone()
