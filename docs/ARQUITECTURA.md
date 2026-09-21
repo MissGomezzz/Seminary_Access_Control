@@ -1,6 +1,6 @@
 # Arquitectura: sistema de control de acceso sobre un agente institucional
 
-> Estado: arquitectura con las desviaciones de `DESVIACIONES.md` aplicadas. Etapa 0 completada, implementación en curso.
+> Estado: arquitectura con las desviaciones de `DESVIACIONES.md` aplicadas. Etapa 0 completada. En la etapa 1 están implementados el esquema, los roles de base de datos, el trigger y la política RLS de la sección 6.3, y la línea base B1 usa el mismo esquema con Groq como modelo. El resto de componentes sigue pendiente. El avance por etapa está en `PLAN_IMPLEMENTACION.md`.
 > Alcance: define el flujo, los componentes, sus contratos y las decisiones de seguridad que hacen que **ninguna manipulación del prompt pueda ampliar lo que un usuario ve**.
 
 > **Desviaciones aplicadas.** El plan de implementación manda sobre este documento y el registro completo está en `DESVIACIONES.md`. Este texto ya incorpora lo siguiente:
@@ -14,7 +14,7 @@
 > - Simplificados: sin token exchange (solo el servicio de recuperación se conecta a la base, con un rol de mínimo privilegio), client secret en lugar de `private_key_jwt`, reindexado por trigger, auditoría en tabla de solo inserción y dos herramientas (`buscar_documentos` y `leer_documento`).
 > - Recuperación léxica con `websearch_to_tsquery` y `ts_rank_cd`. La búsqueda vectorial es una etapa opcional y la columna de vector no existe en la versión base.
 > - El historial vive en el servidor con clave por usuario, sesión y versión de política.
-> - El modelo de lenguaje no depende de un proveedor concreto y se accede por la interfaz `LLMClient`.
+> - El modelo de lenguaje se accede por la interfaz `LLMClient`, independiente del proveedor. El proveedor elegido es Groq y el CI usa un cliente simulado.
 > - Se mide utilidad además de fuga, con tokens canario y un conjunto de ataques retenido.
 
 ## Índice
@@ -68,7 +68,7 @@ flowchart TD
 
     GW -->|9\. llamada al servicio\nde recuperación, sin credencial\nde BD en el orquestador| REC[Servicio de recuperación\nconsultas parametrizadas]
 
-    REC -->|10\. SET LOCAL app.user_id, app.roles, app.dept,\napp.clearance, app.acl_tags\ndentro de la transaccion| DB[(PostgreSQL + pgvector\nRLS forzada)]
+    REC -->|10\. SET LOCAL app.user_id, app.roles, app.dept,\napp.allowed_depts, app.clearance, app.acl_tags\ndentro de la transaccion| DB[(PostgreSQL + pgvector\nRLS forzada)]
 
     DB -->|11\. filas ya filtradas por RLS| REC
     REC -->|12\. chunks autorizados + metadata| GW
@@ -389,17 +389,31 @@ LIMIT :k;
 Aunque el predicado ya llega correcto desde el PDP, RLS se activa igual: es la capa que atrapa el día en que un desarrollador olvide aplicar el filtro en el código de la aplicación.
 
 ```sql
+-- La regla vive en una función para usar exactamente la misma en documents y en chunks
+CREATE FUNCTION app_row_visible(row_dept TEXT, row_sensitivity sensitivity_level,
+                                row_owner UUID, row_acl_tags TEXT[]) RETURNS BOOLEAN
+LANGUAGE sql STABLE AS $$
+    SELECT
+        -- 1. Dependencia permitida y nivel dentro del tope. Nunca restringido por esta vía
+        (row_dept = ANY (string_to_array(NULLIF(current_setting('app.allowed_depts', true), ''), ','))
+         AND row_sensitivity < 'restringido'
+         AND row_sensitivity <= NULLIF(current_setting('app.clearance', true), '')::sensitivity_level)
+        -- 2. Propiedad hasta confidencial
+        OR (row_owner = NULLIF(current_setting('app.user_id', true), '')::uuid
+            AND row_sensitivity <= 'confidencial')
+        -- 3. Restringido solo por intersección de etiquetas
+        OR (row_sensitivity = 'restringido'
+            AND row_acl_tags && string_to_array(NULLIF(current_setting('app.acl_tags', true), ''), ','))
+$$;
+
 ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chunks FORCE ROW LEVEL SECURITY;   -- se aplica incluso al dueño de la tabla
-
-CREATE POLICY chunks_access_policy ON chunks
-    USING (
-        -- Sin variables de sesión, current_setting devuelve NULL y la política no devuelve filas
-        dept IN (current_setting('app.dept', true), 'institucional')
-        AND sensitivity <= NULLIF(current_setting('app.clearance', true), '')::sensitivity_level
-        -- Las reglas por owner_id y acl_tags se alinean con el PDP en la etapa 1
-    );
+CREATE POLICY chunks_access_policy ON chunks FOR SELECT
+    USING (app_row_visible(dept, sensitivity, owner_id, acl_tags));
+-- documents recibe la misma política, porque leer_documento también la consulta
 ```
+
+Sin variables de sesión, `current_setting` devuelve NULL o cadena vacía y la política no devuelve filas. Las listas son texto separado por comas. `FORCE` no aplica a superusuarios ni a roles con `BYPASSRLS`. En el entorno local `acxes_owner` es superusuario, por eso S se conecta siempre con `acxes_app` y B1 usa el propietario a propósito. El código vigente está en `acxes/db/rls.sql`.
 
 Y en cada transacción, antes de consultar:
 
@@ -407,6 +421,7 @@ Y en cada transacción, antes de consultar:
 SET LOCAL app.user_id = '...';
 SET LOCAL app.roles = 'supervisor';
 SET LOCAL app.dept = 'academica';
+SET LOCAL app.allowed_depts = 'institucional,academica';
 SET LOCAL app.clearance = 'confidencial';
 SET LOCAL app.acl_tags = '';
 ```
@@ -465,7 +480,7 @@ El rol de base de datos que usa el servicio de recuperación **no** tiene `BYPAS
 - **Identidad**: Keycloak (Docker).
 - **Datos**: PostgreSQL + extensión `pgvector` (Docker).
 - **PDP**: evaluador propio con reglas YAML versionadas.
-- **Modelo de lenguaje**: interfaz `LLMClient` independiente del proveedor, con cliente simulado en CI.
+- **Modelo de lenguaje**: interfaz `LLMClient` independiente del proveedor. Cliente de Groq (API compatible con OpenAI) con `httpx` y cliente simulado en CI.
 
 ### Estructura de carpetas propuesta
 
