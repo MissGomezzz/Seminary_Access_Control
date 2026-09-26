@@ -1,9 +1,8 @@
 # Guía de instalación en Windows — Arquitectura Unsecure (B1)
 
-Esta guía asume que ya tienes el código actualizado del repo (con los ajustes
-de `config.py` y `orchestrator/baseline_unsecure.py` descritos más abajo).
-Si tu compañera clonó el repo **antes** de que se aplicaran esos ajustes,
-haz `git pull` primero.
+Esta guía asume que ya tienes el código actualizado del repo. Si clonaste el
+repo **antes** de la versión con el esquema compartido y Groq, haz `git pull`
+primero.
 
 Requisitos: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 instalado y abierto, y Python 3.12 o superior.
@@ -47,13 +46,17 @@ Sabrás que el entorno está activo porque tu línea empieza con `(.venv)`.
 copy .env.example .env
 ```
 
-Abre `.env` con tu editor y cambia estas dos líneas:
+Abre `.env` con tu editor y cambia estas líneas:
 
 ```
 POSTGRES_PASSWORD=cambiar_esta_clave
+POSTGRES_APP_PASSWORD=cambiar_esta_clave_app
+POSTGRES_AUDIT_PASSWORD=cambiar_esta_clave_auditoria
 ```
 
-por cualquier clave que tú elijas (anótala, la necesitas más adelante), y:
+por claves que tú elijas (anótalas, `POSTGRES_PASSWORD` la necesitas más
+adelante). Las otras dos son las claves de los roles de aplicación y de
+auditoría que crea el paso 5. Y:
 
 ```
 POSTGRES_PORT=5432
@@ -67,8 +70,10 @@ POSTGRES_PORT=5433
 
 Esto último es porque muchos equipos ya tienen un PostgreSQL local instalado
 que ocupa el puerto 5432 — usar 5433 evita el conflicto sin tener que tocar
-nada más en tu máquina. Deja `LLM_CLIENT=mock` tal cual está: así no
-necesitas ninguna clave de OpenAI/Anthropic para probar el sistema.
+nada más en tu máquina. Deja `LLM_CLIENT=mock` para probar sin ninguna clave.
+Para usar Groq de verdad, pon `LLM_CLIENT=real` y tu clave en `LLM_API_KEY`
+(el resto de las variables `LLM_*` ya viene en `.env.example`). Cada valor va
+en su propia variable: la clave solo en `LLM_API_KEY`.
 
 ---
 
@@ -99,18 +104,20 @@ seminary_access_control-postgres-1    ...   Up (healthy)       127.0.0.1:5433->5
 ## 5. Carga el esquema y los datos de prueba
 
 ```
-docker compose exec -T postgres psql -U acxes_owner -d acxes < acxes/db/schema.sql
-docker compose exec -T postgres psql -U acxes_owner -d acxes < acxes/db/seed.sql
+python -m acxes.db.apply
 ```
+
+Crea las tablas, los roles `acxes_app` y `acxes_audit`, las políticas RLS y un
+corpus provisional de 23 documentos con seis usuarios de prueba. Se puede
+volver a correr cuando quieras: recrea todo. No necesita `psql`.
 
 Verifica que los datos quedaron cargados:
 
 ```
-docker compose exec -T postgres psql -U acxes_owner -d acxes -c "SELECT full_name, role, salary FROM employees;"
+docker compose exec -T postgres psql -U acxes_owner -d acxes -c "SELECT full_name, dept, clearance FROM users;"
 ```
 
-Deberías ver una tabla con 6 empleados (Sofía, Belén, Ángela, Laura, Carlos
-y Diego).
+Deberías ver seis usuarios (Sofía, Belén, Ángela, Laura, Carlos y Diego).
 
 ---
 
@@ -125,7 +132,9 @@ set LLM_CLIENT=mock
 pytest -q
 ```
 
-Deberías ver `8 passed`.
+Con la base cargada (paso 5) deberías ver todas las pruebas pasar, incluidas
+las de `tests/rls/`. Si la base no está disponible, esas pruebas se omiten y
+`pytest` lo indica.
 
 ---
 
@@ -135,13 +144,13 @@ Deberías ver `8 passed`.
 python -m acxes.edge_api.cli_unsecure
 ```
 
-Te pedirá un nombre de usuario (no se valida, es solo una etiqueta para el
-historial). Prueba, por ejemplo:
+Te muestra los usuarios de prueba y te deja elegir uno por número (no se
+verifica la identidad, ese es el punto de B1). Prueba, por ejemplo:
 
 ```
 ¿Cuál es el salario de Laura Martínez?
-¿Quién está en el equipo que dirige Carlos Rentería?
-Necesito el reporte global de nómina.
+Necesito el presupuesto detallado por centro de costo.
+Necesito el acta del comité disciplinario.
 ```
 
 Escribe `salir` para terminar.
@@ -167,6 +176,13 @@ tasklist /FI "PID eq <el número que te dio arriba>"
 Si te dice `postgres.exe`, no hace falta desinstalarlo ni detenerlo: basta
 con usar `POSTGRES_PORT=5433` en tu `.env`, como en el paso 3.
 
+### Cada conexión a la base tarda 10 segundos
+
+En Windows, `localhost` se resuelve primero a IPv6 (`::1`) y Docker publica el
+puerto solo en `127.0.0.1`, así que la conexión espera 10 segundos antes de
+probar IPv4. Usa `POSTGRES_HOST=127.0.0.1` en `.env`, que es el valor de
+`.env.example` y el predeterminado de `acxes/config.py`.
+
 ### El chat se queda pegado sin responder al hacer una consulta
 
 Es un problema conocido de `psycopg` en Windows: intenta negociar cifrado
@@ -179,10 +195,24 @@ versión actualizada de ese archivo.
 
 ### `TypeError: Object of type Decimal is not JSON serializable`
 
-Postgres devuelve las columnas numéricas (`salary`) como `Decimal` en
-Python, y el `json.dumps` por defecto no sabe convertirlas. Ya está
-corregido en `acxes/orchestrator/baseline_unsecure.py`, función `_to_json`,
-que ahora convierte `Decimal` a `float` antes de serializar.
+Postgres devuelve las columnas numéricas como `Decimal` en Python, y el
+`json.dumps` por defecto no sabe convertirlas. Ya está corregido en
+`acxes/orchestrator/baseline_unsecure.py`, función `_to_json`, que convierte
+`Decimal` a `float` antes de serializar.
+
+### El chat responde "estado 404" al consultar el modelo
+
+Casi siempre es `LLM_BASE_URL`. Debe ser `https://api.groq.com/openai/v1`,
+sin `/chat/completions` al final, aunque el cliente ya tolera esa forma. Desde
+esta versión el mensaje incluye el código de error de Groq, por ejemplo
+`model_not_found` si el identificador de `LLM_MODEL_AGENT` no existe, o
+`invalid_api_key` con estado 401 si la clave es incorrecta.
+
+### `pytest` falla con "Input should be 'mock' or 'real'"
+
+Un valor está en la variable equivocada de `.env`, normalmente la clave de
+Groq escrita en `LLM_CLIENT` en lugar de `LLM_API_KEY`. `LLM_CLIENT` solo
+acepta `mock` o `real`. Corrígelo y no compartas el valor por ningún canal.
 
 ### Ejecuté `pip install -e ".[dev]"` y dijo "does not appear to be a Python project"
 

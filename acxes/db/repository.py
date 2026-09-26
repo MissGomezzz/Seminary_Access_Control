@@ -1,85 +1,99 @@
-"""Acceso a los datos institucionales.
+"""Acceso a los datos institucionales para la línea base B1 (Unsecure).
 
-Deliberadamente NO expone ningún filtro por rol o dependencia: esa es la
-característica que define a la arquitectura Unsecure (B1). El filtro por rol
-llega en una etapa posterior del seminario, con el PDP (`acxes/pdp/`) y RLS
-(ver `docs/ARQUITECTURA.md`).
+Deliberadamente NO aplica ningún filtro por rol, dependencia, nivel ni etiquetas, y se
+conecta con el rol propietario, una credencial amplia que ignora RLS. Esa es la
+característica que define a B1. S usa el rol de aplicación, el predicado del PDP y RLS
+(ver `docs/ARQUITECTURA.md`). Este módulo no debe importarse desde S.
 """
 
 from dataclasses import dataclass
 from typing import Protocol
+from uuid import UUID
 
 import psycopg
 
 from acxes.config import Settings, postgres_dsn
+from acxes.retrieval.lexical import SEARCH_CHUNKS_SQL, keywords_to_or_query
 
 
 @dataclass(frozen=True)
-class Employee:
-    id: int
+class UserProfile:
+    id: str
     full_name: str
     role: str
-    team_id: int | None
-    salary: float
+    dept: str
+    clearance: str
+    acl_tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
-class Team:
-    id: int
-    name: str
-    manager_id: int | None
+class ChunkHit:
+    chunk_id: str
+    doc_id: str
+    title: str
+    content: str
+
+
+@dataclass(frozen=True)
+class DocumentRecord:
+    doc_id: str
+    title: str
+    chunks: tuple[ChunkHit, ...]
 
 
 class InstitutionalRepository(Protocol):
-    """Contrato mínimo. Nótese la ausencia de cualquier parámetro de identidad
-    o de rol en las firmas: en B1 no existe ese concepto en esta capa."""
+    """Contrato de B1. Nótese la ausencia de cualquier parámetro de identidad."""
 
-    def find_employee_by_name(self, full_name: str) -> Employee | None: ...
-    def list_team_members(self, team_id: int) -> list[Employee]: ...
-    def payroll_report(self) -> list[Employee]: ...
-    def team_led_by(self, manager_full_name: str) -> Team | None: ...
+    def list_users(self) -> list[UserProfile]: ...
+    def search_chunks(self, keywords: list[str], k: int) -> list[ChunkHit]: ...
+    def get_document(self, doc_id: UUID) -> DocumentRecord | None: ...
+
+
+_USER_SQL = """
+SELECT u.id, u.full_name, r.name, u.dept, u.clearance::text, u.acl_tags
+FROM users u
+JOIN user_roles ur ON ur.user_id = u.id
+JOIN roles r ON r.id = ur.role_id
+"""
 
 
 class PostgresInstitutionalRepository:
     """Implementación real, sin ninguna cláusula WHERE de autorización."""
 
     def __init__(self, settings: Settings) -> None:
-        self._dsn = postgres_dsn(settings)
+        self._dsn = postgres_dsn(settings, role="owner")
 
     def _connect(self) -> psycopg.Connection:
         return psycopg.connect(self._dsn)
 
-    def find_employee_by_name(self, full_name: str) -> Employee | None:
+    def list_users(self) -> list[UserProfile]:
         with self._connect() as conn, conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, full_name, role, team_id, salary "
-                "FROM employees WHERE full_name ILIKE %s",
-                (f"%{full_name}%",),
-            )
+            cur.execute(_USER_SQL + " ORDER BY u.full_name")
+            return [
+                UserProfile(str(uid), name, role, dept, clearance, tuple(tags))
+                for uid, name, role, dept, clearance, tags in cur.fetchall()
+            ]
+
+    def search_chunks(self, keywords: list[str], k: int) -> list[ChunkHit]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(SEARCH_CHUNKS_SQL, {"q": keywords_to_or_query(keywords), "k": k})
+            return [
+                ChunkHit(str(cid), str(did), title, content)
+                for cid, did, title, content in cur.fetchall()
+            ]
+
+    def get_document(self, doc_id: UUID) -> DocumentRecord | None:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT title FROM documents WHERE id = %s", (doc_id,))
             row = cur.fetchone()
-            return Employee(*row) if row else None
-
-    def list_team_members(self, team_id: int) -> list[Employee]:
-        with self._connect() as conn, conn.cursor() as cur:
+            if row is None:
+                return None
+            title = row[0]
             cur.execute(
-                "SELECT id, full_name, role, team_id, salary "
-                "FROM employees WHERE team_id = %s",
-                (team_id,),
+                "SELECT id, content FROM chunks WHERE doc_id = %s ORDER BY chunk_index",
+                (doc_id,),
             )
-            return [Employee(*row) for row in cur.fetchall()]
-
-    def payroll_report(self) -> list[Employee]:
-        with self._connect() as conn, conn.cursor() as cur:
-            cur.execute("SELECT id, full_name, role, team_id, salary FROM employees")
-            return [Employee(*row) for row in cur.fetchall()]
-
-    def team_led_by(self, manager_full_name: str) -> Team | None:
-        with self._connect() as conn, conn.cursor() as cur:
-            cur.execute(
-                "SELECT t.id, t.name, t.manager_id FROM teams t "
-                "JOIN employees e ON e.id = t.manager_id "
-                "WHERE e.full_name ILIKE %s",
-                (f"%{manager_full_name}%",),
+            chunks = tuple(
+                ChunkHit(str(cid), str(doc_id), title, content) for cid, content in cur.fetchall()
             )
-            row = cur.fetchone()
-            return Team(*row) if row else None
+            return DocumentRecord(str(doc_id), title, chunks)
