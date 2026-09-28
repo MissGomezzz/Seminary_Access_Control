@@ -17,6 +17,7 @@ jobs:
       POSTGRES_PASSWORD: ci_owner_efimera
       POSTGRES_APP_PASSWORD: ci_app_efimera
       POSTGRES_AUDIT_PASSWORD: ci_audit_efimera
+      POSTGRES_PDP_PASSWORD: ci_pdp_efimera
     services:
       postgres:
         image: pgvector/pgvector:pg16

@@ -52,11 +52,12 @@ Abre `.env` con tu editor y cambia estas líneas:
 POSTGRES_PASSWORD=cambiar_esta_clave
 POSTGRES_APP_PASSWORD=cambiar_esta_clave_app
 POSTGRES_AUDIT_PASSWORD=cambiar_esta_clave_auditoria
+POSTGRES_PDP_PASSWORD=cambiar_esta_clave_pdp
 ```
 
 por claves que tú elijas (anótalas, `POSTGRES_PASSWORD` la necesitas más
-adelante). Las otras dos son las claves de los roles de aplicación y de
-auditoría que crea el paso 5. Y:
+adelante). Las otras tres son las claves de los roles de aplicación, de
+auditoría y del PDP que crea el paso 5. Y:
 
 ```
 POSTGRES_PORT=5432

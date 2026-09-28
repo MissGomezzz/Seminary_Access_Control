@@ -4,7 +4,7 @@ from psycopg.conninfo import make_conninfo
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-DbRole = Literal["owner", "app", "audit"]
+DbRole = Literal["owner", "app", "audit", "pdp"]
 
 
 class Settings(BaseSettings):
@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     postgres_password: SecretStr = SecretStr("")
     postgres_app_password: SecretStr = SecretStr("")
     postgres_audit_password: SecretStr = SecretStr("")
+    postgres_pdp_password: SecretStr = SecretStr("")
 
 
 def get_settings() -> Settings:
@@ -47,13 +48,16 @@ def get_settings() -> Settings:
 
 def postgres_dsn(settings: Settings, role: DbRole = "owner") -> str:
     """DSN de conexión para el rol de base de datos indicado. El orquestador de S
-    no debe llamar a esto. B1 lo hace con el rol propietario, por diseño."""
+    no debe llamar a esto. Solo lo hacen el servicio de recuperación (app), el almacén de
+    atributos del PDP (pdp) y B1, que usa el rol propietario por diseño."""
     if role == "owner":
         user, password = settings.postgres_user, settings.postgres_password
     elif role == "app":
         user, password = "acxes_app", settings.postgres_app_password
-    else:
+    elif role == "audit":
         user, password = "acxes_audit", settings.postgres_audit_password
+    else:
+        user, password = "acxes_pdp", settings.postgres_pdp_password
     return make_conninfo(
         host=settings.postgres_host,
         port=settings.postgres_port,

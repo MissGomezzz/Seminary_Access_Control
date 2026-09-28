@@ -1,6 +1,6 @@
 # Arquitectura: sistema de control de acceso sobre un agente institucional
 
-> Estado: arquitectura con las desviaciones de `DESVIACIONES.md` aplicadas. Etapa 0 completada. En la etapa 1 están implementados el esquema, los roles de base de datos, el trigger y la política RLS de la sección 6.3, y la línea base B1 usa el mismo esquema con Groq como modelo. El resto de componentes sigue pendiente. El avance por etapa está en `PLAN_IMPLEMENTACION.md`.
+> Estado: arquitectura con las desviaciones de `DESVIACIONES.md` aplicadas. Etapa 0 completada. En la etapa 1 están implementados el esquema, los roles de base de datos, el trigger y la política RLS de la sección 6.3, y la línea base B1 usa el mismo esquema con Groq como modelo. En la etapa 3 están implementados el contrato del `SecurityContext` (4.4), el PDP (5.3) y el servicio de recuperación filtrada (6.2). El resto de componentes sigue pendiente. El avance por etapa está en `PLAN_IMPLEMENTACION.md`.
 > Alcance: define el flujo, los componentes, sus contratos y las decisiones de seguridad que hacen que **ninguna manipulación del prompt pueda ampliar lo que un usuario ve**.
 
 > **Desviaciones aplicadas.** El plan de implementación manda sobre este documento y el registro completo está en `DESVIACIONES.md`. Este texto ya incorpora lo siguiente:
@@ -65,6 +65,7 @@ flowchart TD
 
     GW -->|7\. evaluate\nsubject, action, resource| PDP[PDP\nmotor RBAC + ABAC]
     PDP -->|8\. decisión + PREDICADO\nno solo allow/deny| GW
+    PDP -.->|rol, dept y acl_tags vigentes\npor usuario, rol acxes_pdp| DB
 
     GW -->|9\. llamada al servicio\nde recuperación, sin credencial\nde BD en el orquestador| REC[Servicio de recuperación\nconsultas parametrizadas]
 
@@ -192,6 +193,8 @@ La diferencia clave con el planteamiento original es que **el RBAC/ABAC no es un
 
 Deliberadamente **no** se incluye PII (nombre, correo, etc.) en el token — se resuelve por separado si la UI lo necesita — ni atributos volátiles como el proyecto activo o permisos temporales: esos se consultan al PDP en el momento, para que una revocación o cambio de permiso surta efecto de inmediato sin esperar a que expire un token ya emitido.
 
+**Implementación.** El PDP no decide con los claims `roles`, `dept`, `clearance` ni `acl_tags`. Los lee de la base en cada evaluación y del token solo usa `sub`. Los claims se conservan para la interfaz y, si difieren de la base, se anotan en la decisión para la auditoría. Ver 5.3 y 5.5.
+
 ### 4.4 SecurityContext derivado (lo que realmente ve el resto del sistema)
 
 ```json
@@ -200,13 +203,16 @@ Deliberadamente **no** se incluye PII (nombre, correo, etc.) en el token — se 
   "roles": ["supervisor"],
   "dept": "academica",
   "clearance": "confidencial",
+  "acl_tags": ["comite_disciplinario"],
   "session_id": "a91f...",
-  "policy_version": "2026-09-01",
+  "policy_version": "2026-09-21.1",
   "issued_at": "2026-09-17T14:32:00Z"
 }
 ```
 
 Este objeto es lo único que viaja al orquestador y al Tool Gateway. Es inmutable durante la vida del turno y se reconstruye en cada request desde el token — el agente no puede escribirlo ni el usuario puede alterarlo desde el chat.
+
+Está implementado en `acxes/security_context.py` como modelo Pydantic congelado. La API de borde lo construye con `SecurityContext.from_claims(claims_validados, pdp.policy_version)` después de validar el token. `session_id` viene del claim `session_id` o, si falta, de `sid`. `roles`, `dept`, `clearance` y `acl_tags` se copian tal como vienen, pero el PDP no los usa para decidir: toma esos atributos de la base. El contrato para la etapa 2 está en `documents/CONTRATO_ETAPA2.md`.
 
 ### 4.5 Ciclo de vida del token
 
@@ -299,13 +305,16 @@ Evaluador propio en Python con reglas declarativas en YAML, versionadas, desacop
     "user_id": "b3f1c2e4-...",
     "roles": ["supervisor"],
     "dept": "academica",
-    "clearance": "confidencial"
+    "clearance": "confidencial",
+    "acl_tags": ["comite_disciplinario"]
   },
   "action": "search",
-  "resource": "documentos_academicos",
-  "policy_version": "2026-09-01"
+  "resource": "documentos",
+  "policy_version": "2026-09-21.1"
 }
 ```
+
+En la implementación la entrada es el propio `SecurityContext` más la acción y el recurso (`PolicyDecisionPoint.evaluate` en `acxes/pdp/evaluator.py`). Del contexto el PDP usa `user_id` y `policy_version`. El rol, la dependencia y las etiquetas los lee de la base en cada evaluación con `PostgresSubjectStore` (`acxes/pdp/subject_store.py`), conectado como `acxes_pdp`, un rol que solo puede ejecutar la función `pdp_subject` (`acxes/db/pdp.sql`). La política vigente está en `acxes/pdp/policies/2026-09-21.1.yaml` y el nombre del archivo debe coincidir con su versión.
 
 **Contrato de salida — un predicado, no solo un booleano:**
 
@@ -325,6 +334,8 @@ Evaluador propio en Python con reglas declarativas en YAML, versionadas, desacop
 
 El predicado es una estructura de datos, no una cadena SQL. El servicio de recuperación lo traduce en parámetros ligados (nunca en SQL concatenado por texto). Si `decision` es `deny`, el Tool Gateway corta ahí — la recuperación ni se invoca.
 
+En la implementación, `Predicate` (`acxes/pdp/model.py`) lleva además el método `allows`, que evalúa en Python la misma regla que RLS y se usa en la prueba de equivalencia. `Decision` añade el rol y la dependencia tomados de la base, usados solo para las variables de auditoría `app.roles` y `app.dept`, la lista `claims_drift` de claims que difieren de la base y un código `reason`. Los tres últimos van solo a la auditoría. El servicio de recuperación (`acxes/retrieval/secure.py`) rechaza una decisión de denegación sin abrir conexión.
+
 ### 5.4 PEP (Policy Enforcement Point)
 
 Vive en el **Tool Gateway**, que es el único componente autorizado a invocar el servicio de recuperación. Cada `tool_call` del agente pasa obligatoriamente por él; no existe una ruta alterna desde el orquestador a los datos.
@@ -334,7 +345,7 @@ Vive en el **Tool Gateway**, que es el único componente autorizado a invocar el
 - **Mínimo privilegio**: los roles se diseñan por función real, no se reutiliza un rol amplio "para simplificar".
 - **Separación de funciones**: quien administra roles en Keycloak no es, por defecto, quien tiene `clearance: restringido`.
 - **Revisión periódica** de asignaciones de rol (recertificación trimestral, por ejemplo), con reporte automático de roles no usados en N días.
-- **Alta/baja de rol**: al revocar un rol, el cambio debe reflejarse en la siguiente evaluación del PDP sin depender de la expiración del access token — de ahí que los roles no se "congelen" más allá de lo necesario en el JWT y el PDP pueda consultarlos en tiempo casi real si se requiere.
+- **Alta/baja de rol**: al revocar un rol, el cambio debe reflejarse en la siguiente evaluación del PDP sin depender de la expiración del access token — de ahí que los roles no se "congelen" más allá de lo necesario en el JWT y el PDP pueda consultarlos en tiempo casi real si se requiere. Implementado: el PDP lee el rol, la dependencia y las etiquetas de la base en cada evaluación. El procedimiento de revocación está en `documents/POLITICAS_ACCESO.md`.
 - **Cambio de rol a mitad de sesión**: invalida el historial de conversación asociado a la `policy_version` anterior (ver 3.8) y fuerza una nueva evaluación en el siguiente turno.
 
 ---

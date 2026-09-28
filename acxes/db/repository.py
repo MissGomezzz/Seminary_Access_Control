@@ -14,6 +14,15 @@ import psycopg
 
 from acxes.config import Settings, postgres_dsn
 from acxes.retrieval.lexical import SEARCH_CHUNKS_SQL, keywords_to_or_query
+from acxes.retrieval.types import ChunkHit, DocumentRecord
+
+__all__ = [
+    "ChunkHit",
+    "DocumentRecord",
+    "InstitutionalRepository",
+    "PostgresInstitutionalRepository",
+    "UserProfile",
+]
 
 
 @dataclass(frozen=True)
@@ -24,21 +33,6 @@ class UserProfile:
     dept: str
     clearance: str
     acl_tags: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class ChunkHit:
-    chunk_id: str
-    doc_id: str
-    title: str
-    content: str
-
-
-@dataclass(frozen=True)
-class DocumentRecord:
-    doc_id: str
-    title: str
-    chunks: tuple[ChunkHit, ...]
 
 
 class InstitutionalRepository(Protocol):

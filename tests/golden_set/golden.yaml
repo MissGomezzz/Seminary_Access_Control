@@ -1,0 +1,134 @@
+# Golden set de recuperación (etapa 3). Preguntas legítimas por rol, con las palabras clave
+# que entregaría el agente y los documentos que deberían aparecer entre los k = 5 primeros.
+# Todos los esperados están autorizados para la persona según documents/MATRIZ_ACCESO.md.
+# Se usará también en la etapa 6 para medir la tasa de denegación falsa.
+# Una persona por rol: Sofía (empleado, financiera), Carlos (supervisor, académica, con la
+# etiqueta comite_disciplinario) y Diego (administrador, sin etiquetas).
+questions:
+  # Empleado
+  - persona: Sofía
+    question: ¿Cómo solicito vacaciones?
+    keywords: [solicitud, vacaciones, días, anticipación]
+    expected: [procedimiento-de-solicitud-de-vacaciones]
+  - persona: Sofía
+    question: ¿Cuánto me pagaron en mi última nómina?
+    keywords: [nómina, salario, devengado, deducciones]
+    expected: [nomina-individual-sofia-ariza]
+  - persona: Sofía
+    question: ¿Cuál fue el resultado de mi evaluación de desempeño?
+    keywords: [evaluación, desempeño, calificación, metas]
+    expected: [evaluacion-de-desempeno-sofia-ariza]
+  - persona: Sofía
+    question: ¿Cómo se legaliza un gasto?
+    keywords: [legalización, gastos, soportes, anticipo]
+    expected: [procedimiento-de-legalizacion-de-gastos]
+  - persona: Sofía
+    question: ¿Cómo funciona la caja menor?
+    keywords: [caja, menor, fondo, reembolso]
+    expected: [instructivo-de-caja-menor]
+  - persona: Sofía
+    question: ¿Qué dice la política de teletrabajo?
+    keywords: [teletrabajo, trabajo, remoto, casa]
+    expected: [politica-de-teletrabajo]
+  - persona: Sofía
+    question: ¿Cuándo son las fechas de pago de la nómina?
+    keywords: [fechas, pago, nómina, quincena]
+    expected: [politica-general-de-nomina-y-fechas-de-pago, procedimiento-de-pago-de-nomina]
+  - persona: Sofía
+    question: ¿Cómo se registra un nuevo proveedor?
+    keywords: [alta, proveedores, registro, documentos]
+    expected: [procedimiento-de-alta-de-proveedores]
+  - persona: Sofía
+    question: ¿Qué viáticos se reconocen en un viaje de trabajo?
+    keywords: [viáticos, viaje, transporte, alojamiento]
+    expected: [instructivo-de-viaticos]
+  - persona: Sofía
+    question: ¿Cómo reporto un accidente de trabajo?
+    keywords: [reporte, accidente, trabajo, lesión]
+    expected: [procedimiento-de-reporte-de-accidentes-de-trabajo]
+
+  # Supervisor
+  - persona: Carlos
+    question: ¿Qué decidió el comité disciplinario en su primera sesión?
+    keywords: [comité, disciplinario, sesión, decisión, sanción]
+    expected: [acta-del-comite-disciplinario-2026-01]
+  - persona: Carlos
+    question: ¿Cuál es el estado del caso de plagio?
+    keywords: [expediente, disciplinario, plagio, caso]
+    expected: [expediente-disciplinario-caso-de-plagio-2026]
+  - persona: Carlos
+    question: ¿Qué estudiantes están en riesgo académico?
+    keywords: [estudiantes, riesgo, académico, seguimiento]
+    expected: [reporte-de-estudiantes-en-riesgo-academico]
+  - persona: Carlos
+    question: ¿Cuáles fueron las calificaciones de bases de datos?
+    keywords: [calificaciones, bases, datos, notas]
+    expected: [calificaciones-de-bases-de-datos]
+  - persona: Carlos
+    question: ¿Cuál es la tasa de deserción del periodo?
+    keywords: [deserción, estudiantil, retiro, periodo]
+    expected: [informe-de-desercion-estudiantil-2026-1]
+  - persona: Carlos
+    question: ¿Cuántos estudiantes se matricularon en 2026-1?
+    keywords: [matrícula, periodo, estudiantes, inscritos]
+    expected: [informe-de-matricula-del-periodo-2026-1]
+  - persona: Carlos
+    question: ¿Cómo se homologa una asignatura?
+    keywords: [homologación, asignaturas, créditos, solicitud]
+    expected: [procedimiento-de-homologacion-de-asignaturas]
+  - persona: Carlos
+    question: ¿Cuál fue el resultado de mi evaluación de desempeño?
+    keywords: [evaluación, desempeño, metas, competencias]
+    expected: [evaluacion-de-desempeno-carlos-renteria]
+  - persona: Carlos
+    question: ¿Qué reclamos de notas se presentaron?
+    keywords: [reclamos, notas, revisión, acta]
+    expected: [acta-de-reclamos-de-notas-2026-1, acta-de-reclamos-de-notas-2026-2]
+  - persona: Carlos
+    question: ¿Cuál es el reglamento de los laboratorios?
+    keywords: [reglamento, laboratorios, uso, equipos]
+    expected: [reglamento-interno-de-laboratorios]
+
+  # Administrador
+  - persona: Diego
+    question: ¿Cuál es el flujo de caja proyectado para 2026?
+    keywords: [flujo, caja, proyectado, ingresos, egresos]
+    expected: [flujo-de-caja-proyectado-2026]
+  - persona: Diego
+    question: ¿Cuál es el detalle del presupuesto de infraestructura?
+    keywords: [presupuesto, detallado, infraestructura, rubros]
+    expected: [presupuesto-detallado-centro-de-costo-infraestructura]
+  - persona: Diego
+    question: ¿Cuáles son las condiciones del contrato con Aurora?
+    keywords: [contrato, servicios, tecnológicos, aurora]
+    expected: [contrato-con-servicios-tecnologicos-aurora]
+  - persona: Diego
+    question: ¿Cuánta cartera está en mora?
+    keywords: [cartera, morosidad, deudores, vencida]
+    expected: [informe-de-cartera-y-morosidad-2026]
+  - persona: Diego
+    question: ¿Cuáles fueron las calificaciones de programación?
+    keywords: [calificaciones, programación, notas, curso]
+    expected: [calificaciones-de-programacion-i, calificaciones-de-programacion-ii]
+  - persona: Diego
+    question: ¿Qué contiene el expediente académico de Mariana Solano?
+    keywords: [expediente, académico, mariana, solano]
+    expected: [expediente-academico-mariana-solano-ruiz]
+  - persona: Diego
+    question: ¿Cuánto me pagaron en mi última nómina?
+    keywords: [nómina, salario, devengado, deducciones]
+    expected: [nomina-individual-diego-fajardo]
+  - persona: Diego
+    question: ¿Cómo va la ejecución presupuestal por rubro?
+    keywords: [ejecución, presupuestal, rubro, trimestre]
+    expected:
+      - informe-de-ejecucion-presupuestal-por-rubro-2026-q1
+      - informe-de-ejecucion-presupuestal-por-rubro-2026-q2
+  - persona: Diego
+    question: ¿Qué honorarios se pagaron a contratistas?
+    keywords: [honorarios, contratistas, pagos, servicios]
+    expected: [informe-de-honorarios-de-contratistas-2026]
+  - persona: Diego
+    question: ¿Qué dice el plan de contingencia institucional?
+    keywords: [plan, contingencia, emergencia, continuidad]
+    expected: [plan-de-contingencia-institucional]
