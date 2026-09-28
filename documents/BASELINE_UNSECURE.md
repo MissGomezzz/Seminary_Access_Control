@@ -2,7 +2,7 @@
 
 Estado: implementación inicial del Hito 1 (05/09/2026), rehecha el 21/09/2026 sobre el esquema compartido de la etapa 1 y con Groq como modelo real. Corresponde a la sección 4 de `FDSI-GP-01_05-09-2026.pdf` (arquitectura Unsecure) y a la línea base "B1 (línea base ingenua)" de `../docs/UMBRALES_EVALUACION.md`.
 
-B1 usa el mismo esquema, el mismo corpus, las mismas dos herramientas, la misma consulta léxica, el mismo `k = 5` y el mismo tope de 4 iteraciones que usará S. La única diferencia con S es la autorización, que en B1 no existe.
+B1 usa el mismo esquema, el mismo corpus, las mismas dos herramientas, la misma consulta léxica, el mismo `k = 5`, el mismo tope de 4 iteraciones y el mismo presupuesto de 16000 tokens por turno que S. La única diferencia con S es la autorización, que en B1 no existe.
 
 ## De la propuesta al código
 

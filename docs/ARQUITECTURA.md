@@ -152,6 +152,8 @@ La diferencia clave con el planteamiento original es que **el RBAC/ABAC no es un
 
 **Corrección.** Toda clave de caché e historial incluye `(user_id, policy_version)`. Un cambio de rol invalida el historial relevante o fuerza una nueva sesión.
 
+**Implementación.** El historial (`acxes/orchestrator/history.py`) vive en el servidor con clave `(user_id, session_id)` y guarda la versión de política y una huella del predicado vigente. La huella la calcula el Tool Gateway al inicio de cada turno y cambia si cambian el rol, la dependencia o las etiquetas en la base, porque el PDP los lee de ahí. Si la versión o la huella no coinciden, el historial anterior se descarta. Entre turnos solo se guardan el mensaje del usuario y la respuesta final, nunca los resultados de herramientas.
+
 ### 3.9 Denegar por defecto, en las tres capas
 
 **Problema.** Un único punto de fallo (solo el PDP, o solo RLS) significa que un bug en ese componente compromete todo el sistema.
@@ -339,6 +341,8 @@ En la implementación, `Predicate` (`acxes/pdp/model.py`) lleva además el méto
 ### 5.4 PEP (Policy Enforcement Point)
 
 Vive en el **Tool Gateway**, que es el único componente autorizado a invocar el servicio de recuperación. Cada `tool_call` del agente pasa obligatoriamente por él; no existe una ruta alterna desde el orquestador a los datos.
+
+**Implementación.** `acxes/tool_gateway/gateway.py`. Valida el catálogo y el esquema cerrado antes de consultar al PDP, así que un argumento de identidad o un nombre de herramienta desconocido nunca llega a la decisión. Una denegación devuelve la misma forma que un resultado vacío. El orquestador (`acxes/orchestrator/secure_agent.py`) solo recibe el gateway y no importa nada de la base. Las piezas con acceso a datos se crean en `acxes/secure_app.py`.
 
 ### 5.5 Gobernanza de roles
 
