@@ -29,9 +29,9 @@ El predicado que entrega el PDP contiene `allowed_depts`, `max_sensitivity`, `ow
 
 | Id | Política |
 |---|---|
-| P7 | El PDP calcula el nivel máximo a partir del rol con una tabla del YAML de políticas. Si el claim `clearance` del token no coincide con el calculado, se deniega |
-| P8 | Se descartan los roles ajenos al sistema. El usuario debe quedar con exactamente un rol reconocido y con cero o más de uno se deniega |
-| P9 | Si `dept` falta o no está en el catálogo (`institucional`, `academica`, `financiera`), se deniega |
+| P7 | El PDP calcula el nivel máximo a partir del rol que el usuario tiene en la base, con una tabla del YAML de políticas. El claim `clearance` del token no se usa para decidir. Redacción de la etapa 3, pendiente de aprobación del equipo |
+| P8 | El rol se lee de la base (`user_roles`). Se descartan los roles ajenos al sistema y el usuario debe quedar con exactamente un rol reconocido. Con cero o más de uno se deniega. Redacción de la etapa 3, pendiente de aprobación del equipo |
+| P9 | La dependencia se lee de la base. Si no está en el catálogo (`institucional`, `academica`, `financiera`), se deniega |
 | P10 | Sin expiración de roles en la versión base. `expires_at` puede existir pero el PDP no lo evalúa. Queda como trabajo futuro |
 
 ### Herramientas y límites
@@ -55,6 +55,21 @@ El predicado que entrega el PDP contiene `allowed_depts`, `max_sensitivity`, `ow
 |---|---|
 | P16 | El rol de aplicación solo inserta en el registro de auditoría. Nadie lo lee desde la aplicación y la lectura se hace con el rol de auditoría desde un script |
 | P17 | Un único mensaje de denegación aplicado por la guardia de salida. Toda afirmación cita un `chunk_id` devuelto en ese turno. Sin recuperación solo se aceptan saludos y aclaraciones sobre el sistema. El detalle se define en la etapa 5 |
+
+## Fuente de verdad y revocación
+
+La base es la fuente de verdad para autorizar. Keycloak autentica y el token identifica al usuario por `sub`. El PDP lee el rol, la dependencia y las etiquetas de `users` y `user_roles` en cada evaluación, mediante la función `pdp_subject` y el rol `acxes_pdp`. Si los claims del token difieren de la base, prevalece la base y la diferencia queda registrada para la auditoría.
+
+Para revocar un permiso se modifica la base con el rol propietario. El cambio surte efecto en la siguiente evaluación, aunque el usuario conserve su token. Después se actualiza el atributo en Keycloak para que los tokens nuevos coincidan.
+
+```sql
+-- Quitar una etiqueta
+UPDATE users SET acl_tags = array_remove(acl_tags, 'comite_disciplinario') WHERE id = '<uuid>';
+-- Cambiar el rol
+UPDATE user_roles SET role_id = (SELECT id FROM roles WHERE name = 'empleado') WHERE user_id = '<uuid>';
+-- Retirar todo acceso
+DELETE FROM user_roles WHERE user_id = '<uuid>';
+```
 
 ## Clasificación del corpus
 

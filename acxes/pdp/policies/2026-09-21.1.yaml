@@ -1,0 +1,28 @@
+# Política de acceso del PDP. Debe coincidir con documents/POLITICAS_ACCESO.md y con
+# la política RLS de acxes/db/rls.sql. La versión coincide con policy_version en seed.sql.
+version: "2026-09-21.1"
+
+# P9: catálogo de dependencias
+depts: [institucional, academica, financiera]
+
+# P7 y P1: nivel máximo y dependencias visibles por rol. `own_dept` añade la dependencia
+# del usuario. Ningún rol llega a restringido por su nivel
+roles:
+  empleado:
+    max_sensitivity: interno
+    depts: [institucional]
+    own_dept: true
+  supervisor:
+    max_sensitivity: confidencial
+    depts: [institucional]
+    own_dept: true
+  administrador:
+    max_sensitivity: confidencial
+    depts: [institucional, academica, financiera]
+    own_dept: false
+
+# P11: acciones por recurso, iguales para los tres roles
+permissions:
+  documentos:
+    search: [empleado, supervisor, administrador]
+    read: [empleado, supervisor, administrador]

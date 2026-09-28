@@ -15,13 +15,15 @@ DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS policy_version CASCADE;
 DROP FUNCTION IF EXISTS chunks_inherit_from_document() CASCADE;
 DROP FUNCTION IF EXISTS documents_propagate_to_chunks() CASCADE;
+DROP FUNCTION IF EXISTS pdp_subject(UUID) CASCADE;
 -- Al eliminar el tipo se elimina también app_row_visible, que depende de él (rls.sql)
 DROP TYPE IF EXISTS sensitivity_level CASCADE;
 
 -- Sensibilidad como enumerado con orden explícito, nunca TEXT
 CREATE TYPE sensitivity_level AS ENUM ('publico', 'interno', 'confidencial', 'restringido');
 
--- Espejo mínimo de Keycloak para las pruebas. La fuente de verdad de la sesión es el JWT
+-- Atributos de autorización. Keycloak autentica y el JWT identifica al usuario (sub), pero el
+-- PDP toma de aquí el rol, la dependencia y las etiquetas en cada evaluación (pdp.sql)
 CREATE TABLE users (
     id          UUID PRIMARY KEY,
     full_name   TEXT NOT NULL UNIQUE,

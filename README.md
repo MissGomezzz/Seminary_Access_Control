@@ -112,7 +112,7 @@ Si solo quieres la base de datos para probar la arquitectura Unsecure:
 docker compose up -d --wait postgres
 ```
 
-Con la base arriba, define en `.env` las tres claves de PostgreSQL (`POSTGRES_PASSWORD`, `POSTGRES_APP_PASSWORD` y `POSTGRES_AUDIT_PASSWORD`) y carga el esquema, los roles, RLS y los datos provisionales:
+Con la base arriba, define en `.env` las cuatro claves de PostgreSQL (`POSTGRES_PASSWORD`, `POSTGRES_APP_PASSWORD`, `POSTGRES_AUDIT_PASSWORD` y `POSTGRES_PDP_PASSWORD`) y carga el esquema, los roles, RLS y los datos provisionales:
 
 ```
 pip install -e ".[dev]"

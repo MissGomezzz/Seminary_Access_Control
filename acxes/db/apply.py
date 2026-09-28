@@ -24,18 +24,19 @@ def _run_file(conn: psycopg.Connection, name: str) -> None:
 
 
 def _ensure_roles(conn: psycopg.Connection, settings: Settings) -> None:
-    """Crea o actualiza los roles de aplicación y de auditoría. Ninguno es superusuario
+    """Crea o actualiza los roles de aplicación, de auditoría y del PDP. Ninguno es superusuario
     ni tiene BYPASSRLS. Se exige contraseña para no dejar roles con clave vacía."""
     roles = (
         ("acxes_app", settings.postgres_app_password),
         ("acxes_audit", settings.postgres_audit_password),
+        ("acxes_pdp", settings.postgres_pdp_password),
     )
     for name, password in roles:
         secret = password.get_secret_value()
         if not secret:
             raise SystemExit(
                 f"Falta la contraseña del rol {name}. Defínala en .env "
-                "(POSTGRES_APP_PASSWORD y POSTGRES_AUDIT_PASSWORD)."
+                "(POSTGRES_APP_PASSWORD, POSTGRES_AUDIT_PASSWORD y POSTGRES_PDP_PASSWORD)."
             )
         exists = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (name,)).fetchone()
         verb = "ALTER" if exists else "CREATE"
@@ -55,6 +56,7 @@ def apply(settings: Settings | None = None, docs_dir: Path = DOCS_DIR) -> LoadSu
         _ensure_roles(conn, settings)
         _run_file(conn, "grants.sql")
         _run_file(conn, "rls.sql")
+        _run_file(conn, "pdp.sql")
         _run_file(conn, "seed.sql")
     return ingest(settings, docs_dir)
 
