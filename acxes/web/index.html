@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ACXES · Asistente institucional con acceso controlado</title>
+  <meta name="theme-color" content="#A50044">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/css/app.css">
+</head>
+<body>
+
+<!-- Iconos (sprite) -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 4H5a1 1 0 00-1 1v14a1 1 0 001 1h4M16 8l4 4-4 4M20 12H9"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-scope" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3 3 0 00-5 1c0 2 5 1.5 5 4a3 3 0 01-5 1M12 6.5v11"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
+</svg>
+
+<!-- =============================== LOGIN =============================== -->
+<section id="view-login" class="login" hidden>
+  <aside class="login__brand">
+    <div class="brand"><img src="/assets/img/logo.svg" alt=""><span>ACXES</span></div>
+
+    <div class="login__hero">
+      <h1>Un asistente que sabe <em>quién eres</em> antes de responder.</h1>
+      <p>ACXES conecta a las personas con la información institucional y decide qué puede ver cada una,
+         antes de que el modelo lea un solo dato.</p>
+      <ul class="feature-list">
+        <li><span class="dot"><svg class="icon"><use href="#i-key"/></svg></span>
+          <div><b>Identidad verificada</b><small>Inicio de sesión único con Keycloak, OIDC + PKCE.</small></div></li>
+        <li><span class="dot"><svg class="icon"><use href="#i-shield"/></svg></span>
+          <div><b>AI Gateway</b><small>Tool Gateway y PDP filtran cada consulta según tu rol.</small></div></li>
+        <li><span class="dot"><svg class="icon"><use href="#i-tag"/></svg></span>
+          <div><b>Etiquetas de acceso</b><small>Niveles de sensibilidad y etiquetas ACL por documento.</small></div></li>
+      </ul>
+
+      <div class="token-card" aria-hidden="true">
+        <header><span>Access token · JWT</span><span class="ok">● firma válida</span></header>
+<pre style="margin:0;font:inherit">{
+  <span class="k">"sub"</span>: <span class="s">"b3f1c2e4…"</span>,
+  <span class="k">"roles"</span>: [<span class="s">"supervisor"</span>],
+  <span class="k">"dept"</span>: <span class="s">"academica"</span>,
+  <span class="k">"clearance"</span>: <span class="s">"confidencial"</span>,
+  <span class="k">"acl_tags"</span>: [<span class="s">"comite_disciplinario"</span>]
+}</pre>
+      </div>
+    </div>
+
+    <small style="position:relative;color:rgba(255,255,255,.6)">Seminario FDSI / SPTI · Escuela Colombiana de Ingeniería</small>
+  </aside>
+
+  <main class="login__panel">
+    <div class="login__card">
+      <h2>Bienvenida/o</h2>
+      <p>Inicia sesión con tu cuenta institucional para hablar con el asistente.</p>
+
+      <button id="btn-sso" class="btn btn--primary btn--lg" type="button">
+        <svg class="icon"><use href="#i-key"/></svg> Continuar con Keycloak
+      </button>
+      <div class="trust">
+        <span class="chip"><svg class="icon"><use href="#i-lock"/></svg> OIDC + PKCE</span>
+        <span class="chip">JWT RS256</span>
+        <span class="chip">Sin contraseñas en la app</span>
+      </div>
+
+      <div id="demo-box" hidden>
+        <div class="divider">o prueba en modo demo</div>
+        <div id="demo-users" class="demo-users"></div>
+      </div>
+
+      <p class="fine">Tu contraseña se escribe solo en Keycloak. ACXES nunca la ve ni la guarda.</p>
+    </div>
+  </main>
+</section>
+
+<!-- ================================ APP ================================ -->
+<section id="view-app" class="app" hidden>
+  <aside class="sidebar">
+    <div class="brand"><img src="/assets/img/logo.svg" alt=""><span>ACXES</span></div>
+    <button id="btn-new" class="btn btn--new" type="button"><svg class="icon"><use href="#i-plus"/></svg> Nueva conversación</button>
+
+    <nav class="history" aria-label="Conversaciones">
+      <h3>Recientes</h3>
+      <div id="history-list"></div>
+    </nav>
+
+    <div class="usercard">
+      <div class="usercard__id">
+        <span id="user-avatar" class="avatar avatar--lg">?</span>
+        <div><b id="user-name">—</b><small id="user-dept">—</small></div>
+      </div>
+      <div id="user-chips" class="chips"></div>
+      <button id="btn-logout" class="btn btn--ghost" type="button"><svg class="icon"><use href="#i-logout"/></svg> Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <main class="chat">
+    <div id="demo-banner" class="demo-banner" hidden>
+      Modo demo: las respuestas las genera un motor de prueba, no el modelo. La regla de acceso sí es la aprobada.
+    </div>
+    <header class="chat__head">
+      <h2>Asistente institucional</h2>
+      <span class="status"><i></i> AI Gateway activo · <span id="policy-version">—</span></span>
+      <span class="spacer"></span>
+      <button id="btn-scope" class="btn" type="button" aria-expanded="false" aria-controls="scope">
+        <svg class="icon"><use href="#i-scope"/></svg> Mi alcance
+      </button>
+    </header>
+
+    <div id="messages" class="messages" aria-live="polite"><div id="thread" class="thread"></div></div>
+
+    <form id="composer" class="composer" autocomplete="off">
+      <div class="composer__box">
+        <label class="sr-only" for="input">Escribe tu consulta</label>
+        <textarea id="input" rows="1" maxlength="2000" placeholder="Pregunta por un documento, un procedimiento o un dato…"></textarea>
+        <button id="btn-send" class="btn btn--primary" type="submit" aria-label="Enviar"><svg class="icon"><use href="#i-send"/></svg></button>
+      </div>
+      <small>El asistente solo responde con lo que tu perfil puede ver. Cada respuesta cita sus fuentes.</small>
+    </form>
+  </main>
+
+  <aside id="scope" class="scope" data-open="false" aria-label="Mi alcance de acceso">
+    <h3>Mi alcance</h3>
+    <p>Lo que tu perfil puede consultar, según tu rol y tus etiquetas.</p>
+    <h4>Dependencias</h4><div id="scope-depts" class="chips"></div>
+    <h4>Niveles de sensibilidad</h4><div id="scope-levels" class="levels"></div>
+    <h4>Etiquetas ACL</h4><div id="scope-tags" class="chips"></div>
+    <p class="note">Vista informativa. La decisión real la toma el PDP en el servidor, en cada consulta.</p>
+  </aside>
+</section>
+
+<div id="toasts" role="status"></div>
+<script type="module" src="/assets/js/main.js"></script>
+</body>
+</html>
