@@ -16,6 +16,7 @@ Este repositorio recoge el seminario de Fundamentos de Seguridad de la Informaci
 2. [Estructura del proyecto](#estructura-del-proyecto-scaffolding)
 3. [Puesta en marcha](#puesta-en-marcha)
 4. [Correr chat arquitectura unsecure](#cómo-correr-el-chat-de-la-arquitectura-unsecure)
+   - [Front web (monolito)](#front-web-monolito)
 5. [Pruebas](#pruebas)
 6. [Configuración del modelo](#configuración-del-modelo)
 7. [Documentación](#documentación)
@@ -53,7 +54,10 @@ acxes/
 │   ├── turn.py               # TurnResult común a B1, B2 y S. IMPLEMENTADO
 │   └── baseline_unsecure.py  # agente de B1. IMPLEMENTADO (B1)
 ├── edge_api/
-│   └── cli_unsecure.py       # chat de B1 por CLI, sin login. IMPLEMENTADO (B1)
+│   ├── cli_unsecure.py       # chat de B1 por CLI, sin login. IMPLEMENTADO (B1)
+│   ├── app.py                # monolito FastAPI: sirve el front y la API /api/*. IMPLEMENTADO (front)
+│   └── demo_engine.py        # motor de DEMO del front, sustituye a la API real. TEMPORAL
+├── web/                      # front: login con Keycloak (OIDC + PKCE) y chat. IMPLEMENTADO (front)
 ├── tool_gateway/    # PEP interno de la arquitectura Secure. PENDIENTE
 ├── pdp/             # motor RBAC+ABAC de la arquitectura Secure. PENDIENTE
 ├── output_guard/    # citación obligatoria, redacción PII (Secure). PENDIENTE
@@ -66,7 +70,8 @@ tests/
 │   ├── fakes.py                     # repositorio en memoria, sin red ni Docker
 │   ├── test_llm_client.py           # contrato de LLMClient y construcción del cliente
 │   ├── test_groq_client.py          # cliente de Groq con transporte simulado
-│   └── test_baseline_unsecure.py    # T01 a T05 contra B1 y tope de iteraciones
+│   ├── test_baseline_unsecure.py    # T01 a T05 contra B1 y tope de iteraciones
+│   └── test_demo_engine.py          # regla de visibilidad (P1-P8, P12) y contrato de la API del front
 ├── rls/                             # pruebas directas contra la base (marcador db)
 │   ├── test_rls.py                  # filas exactas por rol, cero filas sin variables, enum, trigger, privilegios
 │   └── test_b1_connection.py        # la conexión de B1 ignora RLS
@@ -85,6 +90,7 @@ documents/                   # documentación pública del equipo
 ├── MATRIZ_ACCESO.md         # niveles, dependencias y roles (aprobada)
 ├── POLITICAS_ACCESO.md      # políticas P1 a P17 (aprobadas)
 ├── BASELINE_UNSECURE.md     # mapa de B1 a código y tests
+├── FRONTEND.md              # front: cómo correrlo, contrato de la API, contrato con Keycloak
 └── img/                     # imágenes de pruebas realizadas
 ```
 
@@ -139,6 +145,17 @@ Te muestra los seis usuarios de prueba y te deja elegir uno, sin contraseña, po
 
 Con `LLM_CLIENT=mock` (valor por defecto) las consultas las resuelve `NaiveMockLLMClient`, un doble determinista que no necesita clave. Con `LLM_CLIENT=real` usa Groq. Cada respuesta imprime cuántos fragmentos recibió el modelo, los tokens y la latencia.
 
+## Front web (monolito)
+
+Interfaz de ACXES con login y chat, servida por el mismo proceso que la API. Sin Node ni compilación:
+
+```
+pip install -e ".[dev]"
+uvicorn acxes.edge_api.app:app --reload --port 8000
+```
+
+Abrir <http://localhost:8000>. Arranca en **modo demo** (`ACXES_FRONT_DEMO=1`): no necesita Docker, Keycloak ni Groq, y aplica la regla de visibilidad aprobada sobre el corpus real, con los seis usuarios de prueba. El login real usa Keycloak (Authorization Code + PKCE); para activarlo, renombrar `keycloak/acxes-realm.json.draft` a `acxes-realm.json` y levantar `docker compose up -d keycloak`. El motor de demo **no es la arquitectura Secure** y se reemplaza por la API de borde, el PDP y el Tool Gateway a medida que se implementen. Detalle, contrato de la API y pendientes en [FRONTEND](/documents/FRONTEND.md).
+
 ## Pruebas
 
 ```
@@ -168,6 +185,7 @@ El límite de gasto se configura manualmente en la consola del proveedor desde e
 - [Matriz de acceso](/documents/MATRIZ_ACCESO.md), [Políticas de acceso](/documents/POLITICAS_ACCESO.md): matriz y políticas de acceso aprobadas, guía de diseño para la arquitectura Secure.
 - [Umbrales de evaluación](/docs/UMBRALES_EVALUACION.md): umbrales de evaluación B1/B2/S.
 - [Baseline Unsecure](/documents/BASELINE_UNSECURE.md): mapa de B1 a código y tests.
+- [Front](/documents/FRONTEND.md): front web, contrato de la API y contrato con Keycloak.
 - [Arquitectura](/docs/ARQUITECTURA.md): diseño completo de la arquitectura Secure.
 - [Plan de implementación](/docs/PLAN_IMPLEMENTACION.md): etapas, estado de avance y concreción de B1 y Groq.
 - [Variables de sesión](/docs/VARIABLES_SESION.md): variables que fija el servicio de recuperación para RLS.

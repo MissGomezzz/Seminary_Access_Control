@@ -1,0 +1,308 @@
+{
+  "realm": "acxes",
+  "enabled": true,
+  "displayName": "ACXES",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "accessTokenLifespan": 600,
+  "ssoSessionIdleTimeout": 1800,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "bruteForceProtected": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "empleado",
+        "description": "Nivel máximo: interno"
+      },
+      {
+        "name": "supervisor",
+        "description": "Nivel máximo: confidencial"
+      },
+      {
+        "name": "administrador",
+        "description": "Nivel máximo: confidencial, sin etiquetas por defecto"
+      }
+    ]
+  },
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"validations\": {\"length\": {\"min\": 3, \"max\": 255}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"validations\": {\"email\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}], \"unmanagedAttributePolicy\": \"ADMIN_EDIT\"}"
+          ]
+        }
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "acxes-chat-web",
+      "name": "ACXES · front de chat",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8000/*",
+        "http://127.0.0.1:8000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:8000/*##http://127.0.0.1:8000/*"
+      },
+      "fullScopeAllowed": true,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "dept",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "dept",
+            "claim.name": "dept",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.claim": "false"
+          }
+        },
+        {
+          "name": "clearance",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "clearance",
+            "claim.name": "clearance",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.claim": "false"
+          }
+        },
+        {
+          "name": "acl_tags",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "acl_tags",
+            "claim.name": "acl_tags",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.claim": "false",
+            "multivalued": "true"
+          }
+        },
+        {
+          "name": "audience-acxes-chat-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "acxes-chat-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "acxes-chat-api",
+      "name": "ACXES · API de borde",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false,
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "id": "00000000-0000-4000-a000-000000000001",
+      "username": "sofia.ariza",
+      "email": "sofia.ariza@acxes.local",
+      "firstName": "Sofía",
+      "lastName": "Ariza",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": [
+        "empleado"
+      ],
+      "attributes": {
+        "dept": [
+          "financiera"
+        ],
+        "clearance": [
+          "interno"
+        ],
+        "acl_tags": []
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "acxes123",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-a000-000000000002",
+      "username": "belen.quintero",
+      "email": "belen.quintero@acxes.local",
+      "firstName": "Belén",
+      "lastName": "Quintero",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": [
+        "empleado"
+      ],
+      "attributes": {
+        "dept": [
+          "financiera"
+        ],
+        "clearance": [
+          "interno"
+        ],
+        "acl_tags": []
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "acxes123",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-a000-000000000003",
+      "username": "angela.gomez",
+      "email": "angela.gomez@acxes.local",
+      "firstName": "Ángela",
+      "lastName": "Gómez",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": [
+        "empleado"
+      ],
+      "attributes": {
+        "dept": [
+          "academica"
+        ],
+        "clearance": [
+          "interno"
+        ],
+        "acl_tags": []
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "acxes123",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-a000-000000000004",
+      "username": "laura.martinez",
+      "email": "laura.martinez@acxes.local",
+      "firstName": "Laura",
+      "lastName": "Martínez",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": [
+        "supervisor"
+      ],
+      "attributes": {
+        "dept": [
+          "financiera"
+        ],
+        "clearance": [
+          "confidencial"
+        ],
+        "acl_tags": [
+          "auditoria_interna"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "acxes123",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-a000-000000000005",
+      "username": "carlos.renteria",
+      "email": "carlos.renteria@acxes.local",
+      "firstName": "Carlos",
+      "lastName": "Rentería",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": [
+        "supervisor"
+      ],
+      "attributes": {
+        "dept": [
+          "academica"
+        ],
+        "clearance": [
+          "confidencial"
+        ],
+        "acl_tags": [
+          "comite_disciplinario"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "acxes123",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-a000-000000000006",
+      "username": "diego.fajardo",
+      "email": "diego.fajardo@acxes.local",
+      "firstName": "Diego",
+      "lastName": "Fajardo",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": [
+        "administrador"
+      ],
+      "attributes": {
+        "dept": [
+          "institucional"
+        ],
+        "clearance": [
+          "confidencial"
+        ],
+        "acl_tags": []
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "acxes123",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
