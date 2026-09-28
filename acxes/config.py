@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     # Límites comunes a B1 y S (P13)
     agent_max_iterations: int = 4
     retrieval_k: int = 5
+    # Presupuesto de tokens por turno, sumando entrada y salida de todas las iteraciones
+    agent_max_turn_tokens: int = 16000
 
     # Base de datos. Solo la capa de recuperación de S debe usar el rol de aplicación.
     # B1 usa el propietario a propósito, como credencial amplia
