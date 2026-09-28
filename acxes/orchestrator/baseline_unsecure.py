@@ -9,9 +9,7 @@ invariante de S de que el modelo nunca recibe la identidad. Este módulo no debe
 desde S.
 """
 
-import json
 import time
-from decimal import Decimal
 
 from acxes.config import Settings, get_settings
 from acxes.db.repository import InstitutionalRepository, UserProfile
@@ -24,10 +22,8 @@ from acxes.orchestrator.llm_client import (
     build_llm_client,
 )
 from acxes.orchestrator.tool_catalog import tool_specs
-from acxes.orchestrator.turn import TurnResult
+from acxes.orchestrator.turn import TRUNCATED_MESSAGE, TurnResult, to_json
 from acxes.retrieval.unsecure_tool import UnsecureRetrievalTool
-
-TRUNCATED_MESSAGE = "No fue posible completar la consulta."
 
 _BASE_PROMPT = (
     "Eres el asistente institucional. Responde únicamente con los fragmentos que obtengas "
@@ -71,10 +67,12 @@ class UnsecureAgent:
         llm: LLMClient,
         tool: UnsecureRetrievalTool,
         max_iterations: int = 4,
+        max_turn_tokens: int = 16000,
     ) -> None:
         self._llm = llm
         self._tool = tool
         self._max_iterations = max_iterations
+        self._max_turn_tokens = max_turn_tokens
         self._historial: list[LLMMessage] = []
 
     def responder(self, usuario: UserProfile, consulta: str) -> TurnResult:
@@ -109,6 +107,9 @@ class UnsecureAgent:
                 truncado = False
                 self._historial.append(LLMMessage(role="assistant", content=texto))
                 break
+            # P13: el presupuesto de tokens del turno es el mismo que en S
+            if prompt_tokens + completion_tokens >= self._max_turn_tokens:
+                break
 
             self._historial.append(
                 LLMMessage(
@@ -120,7 +121,7 @@ class UnsecureAgent:
                 resultado = self._ejecutar(llamada)
                 chunk_ids.extend(_chunk_ids(resultado))
                 self._historial.append(
-                    LLMMessage(role="tool", content=_to_json(resultado), tool_call_id=llamada.id)
+                    LLMMessage(role="tool", content=to_json(resultado), tool_call_id=llamada.id)
                 )
 
         if truncado:
@@ -150,15 +151,6 @@ def _chunk_ids(resultado: dict) -> list[str]:
     return ids
 
 
-def _to_json(data: dict) -> str:
-    def _default(o):
-        if isinstance(o, Decimal):
-            return float(o)
-        raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
-
-    return json.dumps(data, ensure_ascii=False, default=_default)
-
-
 def build_default_agent() -> tuple[UnsecureAgent, InstitutionalRepository]:
     """Fábrica para el CLI: Postgres real y configuración de `.env`."""
     from acxes.db.repository import PostgresInstitutionalRepository
@@ -167,4 +159,7 @@ def build_default_agent() -> tuple[UnsecureAgent, InstitutionalRepository]:
     repo = PostgresInstitutionalRepository(settings)
     tool = UnsecureRetrievalTool(repo, settings)
     llm = build_agent_llm_client(settings)
-    return UnsecureAgent(llm, tool, settings.agent_max_iterations), repo
+    agent = UnsecureAgent(
+        llm, tool, settings.agent_max_iterations, settings.agent_max_turn_tokens
+    )
+    return agent, repo
