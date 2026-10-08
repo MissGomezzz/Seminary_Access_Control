@@ -40,7 +40,7 @@ El predicado que entrega el PDP contiene `allowed_depts`, `max_sensitivity`, `ow
 |---|---|
 | P11 | `buscar_documentos` y `leer_documento` están disponibles para los tres roles. La diferencia entre roles la produce el predicado |
 | P12 | `leer_documento` pasa por el mismo predicado que la búsqueda. Un documento inexistente y uno no autorizado devuelven la misma respuesta |
-| P13 | `k = 5` por configuración, de 3 a 8 palabras clave de hasta 40 caracteres cada una, máximo de 4 iteraciones del modelo por turno y 30 solicitudes por minuto por usuario. El presupuesto de tokens por turno se define con el proveedor en la etapa 4 |
+| P13 | `k = 5` por configuración, de 3 a 8 palabras clave de hasta 40 caracteres cada una, máximo de 4 iteraciones del modelo por turno y 30 solicitudes por minuto por usuario. Presupuesto de 16000 tokens por turno, sumando entrada y salida de todas las iteraciones, igual en B1 y S. Valor de la etapa 4, pendiente de aprobación del equipo |
 
 ### Fallos y ciclo de vida
 

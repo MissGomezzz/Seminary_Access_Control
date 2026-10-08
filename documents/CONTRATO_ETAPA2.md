@@ -49,3 +49,18 @@ Los claims informativos siguen siendo obligatorios en `from_claims` y sirven par
 ## Cómo probar la integración
 
 `tests/rls/contexts.py` construye los seis contextos de prueba tal como los produciría un token válido. Una prueba de la etapa 2 puede verificar que `from_claims` sobre el token de cada usuario de prueba produce el mismo contexto, salvo `session_id` e `issued_at`.
+
+## Cómo invocar al agente S (etapa 4)
+
+```python
+from acxes.secure_app import build_secure_agent
+
+agent = build_secure_agent()  # una instancia por proceso, el historial vive en ella
+
+def chat(claims_validados: dict, mensaje: str) -> str:
+    ctx = construir_contexto(claims_validados)
+    turno = agent.respond(ctx, mensaje)
+    return turno.text
+```
+
+El cliente envía solo el mensaje nuevo. El historial se guarda en el servidor con clave por usuario y sesión (`session_id` o `sid`), así que la API de borde no debe aceptar turnos previos del cliente. `turno.chunk_ids` son los fragmentos que vio el modelo y los usará la guardia de salida de la etapa 5. `build_secure_agent` usa el doble determinista con `LLM_CLIENT=mock` y Groq con `LLM_CLIENT=real`.
