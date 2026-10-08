@@ -8,7 +8,7 @@ Este repositorio recoge el seminario de Fundamentos de Seguridad de la Informaci
 
 - Sofía Nicolle Ariza Goenaga
 - María Belén Quintero Aldana 
-- Ángela Gómez Valencia 
+- Ángela Sofía Gómez Valencia 
 
 ## índice 
 
