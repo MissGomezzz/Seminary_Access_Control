@@ -28,7 +28,7 @@ Este repositorio recoge el seminario de Fundamentos de Seguridad de la Informaci
 El seminario avanza en dos capas que conviven en el mismo repositorio:
 
 1. **Arquitectura Unsecure (B1)** — **implementada** sobre el esquema compartido de la etapa 1 y con Groq como modelo real. Es la línea base ingenua: el modelo decide qué recuperar y qué mostrar, la única protección son las instrucciones del prompt, la recuperación no filtra y la conexión a la base ignora RLS. Existe a propósito, para medir y documentar la falla antes de corregirla. Ver [BASELINE UNSECURE](/documents/BASELINE_UNSECURE.md).
-2. **Arquitectura Secure (S)** — la API de borde valida tokens OIDC con JWKS, issuer, audience, expiración, algoritmo RS256 y `azp`; el PDP consulta atributos vigentes y la recuperación usa el rol `acxes_app` con RLS. El modo demo está deshabilitado por defecto y solo funciona cuando `ENVIRONMENT=development` y `ACXES_FRONT_DEMO=1`. El diseño completo está en [ARQUITECTURA](/docs/ARQUITECTURA.md) y el avance por etapa en [PLAN DE IMPLEMENTACIÓN](/docs/PLAN_IMPLEMENTACION.md).
+2. **Arquitectura Secure (S)** — implementada en el flujo de agente: la API valida OIDC, el orquestador no entrega identidad al LLM, el Tool Gateway valida herramientas y ejecuta PDP + recuperación filtrada, la guardia exige citas y redacta PII, y la auditoría registra cada turno. El modo demo está deshabilitado por defecto y solo funciona cuando `ENVIRONMENT=development` y `ACXES_FRONT_DEMO=1`. La evaluación reproducible está en `acxes/evaluation/` y el avance por etapa en [PLAN_IMPLEMENTACION.md](/docs/PLAN_IMPLEMENTACION.md).
 
 ### Configuración segura
 
@@ -64,17 +64,18 @@ acxes/
 │   ├── groq_client.py        # cliente de Groq con httpx. IMPLEMENTADO
 │   ├── tool_catalog.py       # buscar_documentos y leer_documento, esquemas cerrados. IMPLEMENTADO
 │   ├── turn.py               # TurnResult común a B1, B2 y S. IMPLEMENTADO
-│   └── baseline_unsecure.py  # agente de B1. IMPLEMENTADO (B1)
+│   ├── baseline_unsecure.py  # agente de B1. IMPLEMENTADO (B1)
+│   └── secure.py               # agente S con aislamiento por usuario/política. IMPLEMENTADO
 ├── edge_api/
 │   ├── cli_unsecure.py       # chat de B1 por CLI, sin login. IMPLEMENTADO (B1)
 │   ├── app.py                # monolito FastAPI: sirve el front y la API /api/*. IMPLEMENTADO (front)
 │   └── demo_engine.py        # motor de DEMO del front, sustituye a la API real. TEMPORAL
 ├── web/                      # front: login con Keycloak (OIDC + PKCE) y chat. IMPLEMENTADO (front)
-├── tool_gateway/    # PEP interno de la arquitectura Secure. PENDIENTE
-├── pdp/             # motor RBAC+ABAC de la arquitectura Secure. PENDIENTE
-├── output_guard/    # citación obligatoria, redacción PII (Secure). PENDIENTE
+├── tool_gateway/    # PEP interno: catálogo + PDP + recuperación. IMPLEMENTADO
+├── pdp/             # motor RBAC+ABAC de la arquitectura Secure. IMPLEMENTADO
+├── output_guard/    # citación, canarios, PII y agregación mínima. IMPLEMENTADO
 ├── ingestion/       # pipeline de ingesta y corpus generado (Secure). PENDIENTE
-└── evaluation/      # métricas B1 vs B2 vs S. PENDIENTE
+└── evaluation/      # métricas B1 vs S y overhead de latencia. IMPLEMENTADO
 
 tests/
 ├── conftest.py                      # omite las pruebas db si no hay PostgreSQL
@@ -87,8 +88,8 @@ tests/
 ├── rls/                             # pruebas directas contra la base (marcador db)
 │   ├── test_rls.py                  # filas exactas por rol, cero filas sin variables, enum, trigger, privilegios
 │   └── test_b1_connection.py        # la conexión de B1 ignora RLS
-├── golden_set/  # PENDIENTE
-└── red_team/    # PENDIENTE
+├── golden_set/  # casos de recuperación autorizada
+└── red_team/    # catálogo retenido; ejecución experimental pendiente
 
 docs/                        # para Claude y el equipo, casi todo ignorado por git
 ├── ARQUITECTURA.md          # diseño completo de la arquitectura Secure (S)
@@ -166,7 +167,7 @@ pip install -e ".[dev]"
 uvicorn acxes.edge_api.app:app --reload --port 8000
 ```
 
-Abrir <http://localhost:8000>. Arranca en **modo demo** (`ACXES_FRONT_DEMO=1`): no necesita Docker, Keycloak ni Groq, y aplica la regla de visibilidad aprobada sobre el corpus real, con los seis usuarios de prueba. El login real usa Keycloak (Authorization Code + PKCE); para activarlo, renombrar `keycloak/acxes-realm.json.draft` a `acxes-realm.json` y levantar `docker compose up -d keycloak`. El motor de demo **no es la arquitectura Secure** y se reemplaza por la API de borde, el PDP y el Tool Gateway a medida que se implementen. Detalle, contrato de la API y pendientes en [FRONTEND](/documents/FRONTEND.md).
+Abrir <http://localhost:8000>. Arranca en **modo seguro** (`ACXES_FRONT_DEMO=0`), por lo que requiere PostgreSQL, Keycloak y las variables OIDC configuradas. Para una prueba local aislada del front se puede habilitar el demo explícitamente en PowerShell con `$env:ENVIRONMENT="development"; $env:ACXES_FRONT_DEMO="1"`. El motor de demo **no es la arquitectura Secure** y nunca debe habilitarse en producción. El login real usa Keycloak (Authorization Code + PKCE); para activarlo, configure un realm de desarrollo con secretos nuevos y levante `docker compose up -d keycloak`. Detalle y contrato en [FRONTEND](/documents/FRONTEND.md).
 
 ## Pruebas
 

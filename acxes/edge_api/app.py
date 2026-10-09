@@ -11,14 +11,12 @@ Contrato de la API (lo que consume `acxes/web/`):
     POST /api/chat          -> un turno del asistente (ver `documents/FRONTEND.md`)
     POST /api/demo/login    -> solo en modo demo: emite un token de demo
 
-Modo demo (`ACXES_FRONT_DEMO=1`, por defecto): usa `demo_engine`, que NO es la
-arquitectura Secure. Con `ACXES_FRONT_DEMO=0` los endpoints protegidos responden 501
-hasta que se implemente la API de borde real (validación de JWT, SecurityContext,
-orquestador S, Tool Gateway + PDP, guardia de salida). Ver los TODO(etapa N) abajo.
+Modo demo (`ACXES_FRONT_DEMO=1`) solo está permitido en `ENVIRONMENT=development` o
+`test` y usa `demo_engine`, que NO es la arquitectura Secure. En producción la API
+requiere OIDC configurado y valida JWT contra JWKS antes de construir el SecurityContext.
 """
 
 import os
-import re
 from pathlib import Path
 from typing import Annotated
 
@@ -27,13 +25,17 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from acxes.audit import PostgresAuditSink, audit_event
 from acxes.config import get_settings
 from acxes.edge_api import demo_engine
 from acxes.edge_api.auth import OIDCAuthenticator
+from acxes.orchestrator.llm_client import build_llm_client
+from acxes.orchestrator.secure import SecureAgent
 from acxes.pdp.evaluator import PolicyDecisionPoint
 from acxes.pdp.subject_store import PostgresSubjectStore
-from acxes.retrieval.secure import RetrievalDenied, SecureRetrievalService
+from acxes.retrieval.secure import SecureRetrievalService
 from acxes.security_context import SecurityContext
+from acxes.tool_gateway import ToolGateway
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 SETTINGS = get_settings()
@@ -75,6 +77,9 @@ _authenticator = (
 )
 _pdp = PolicyDecisionPoint(PostgresSubjectStore(SETTINGS))
 _retrieval = SecureRetrievalService(SETTINGS)
+_gateway = ToolGateway(_pdp, _retrieval)
+_secure_agent = SecureAgent(build_llm_client(SETTINGS), _gateway, SETTINGS.agent_max_iterations)
+_audit = PostgresAuditSink(SETTINGS)
 
 
 class ChatRequest(BaseModel):
@@ -146,21 +151,26 @@ def chat(body: ChatRequest, claims: Claims) -> dict:
     context = SecurityContext.model_validate(claims)
     if demo_engine.rate_limited(str(context.user_id)):
         raise HTTPException(429, "Demasiadas solicitudes. Espera un momento.")
-    decision = _pdp.evaluate(context, "search", "documentos")
-    if not decision.allowed:
-        raise HTTPException(status_code=403, detail="Acceso denegado")
-    keywords = [word for word in re.findall(r"[\wÁÉÍÓÚÑÜáéíóúñü]+", body.message) if len(word) > 2]
-    try:
-        hits = _retrieval.search(context, decision, keywords[:8])
-    except RetrievalDenied as exc:
-        raise HTTPException(status_code=403, detail="Acceso denegado") from exc
+    result = _secure_agent.responder(context, body.message)
+    audit_event(
+        _audit,
+        user_id=context.user_id,
+        query=body.message,
+        decision={"decision": "allow", "tool_calls": len(result.tool_calls)},
+        policy_version=context.policy_version,
+        chunk_ids=result.chunk_ids,
+        response=result.text,
+        tool_calls=[{"id": call.id, "name": call.name} for call in result.tool_calls],
+        detail={"iterations": result.iterations, "truncated": result.truncated},
+    )
     return {
-        "answer": "\n\n".join(f"{hit.title}: {hit.content}" for hit in hits)
-        or demo_engine.DENIAL,
-        "citations": [
-            {"doc_id": hit.doc_id, "title": hit.title, "chunk_id": hit.chunk_id} for hit in hits
-        ],
-        "gateway": {"decision": decision.decision, "policy_version": decision.policy_version},
+        "answer": result.text,
+        "citations": [{"chunk_id": chunk_id} for chunk_id in result.chunk_ids],
+        "gateway": {
+            "decision": "allow" if result.chunk_ids else "deny",
+            "policy_version": context.policy_version,
+            "iterations": result.iterations,
+        },
     }
 
 
