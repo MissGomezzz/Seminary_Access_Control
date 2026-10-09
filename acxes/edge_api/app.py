@@ -18,6 +18,7 @@ orquestador S, Tool Gateway + PDP, guardia de salida). Ver los TODO(etapa N) aba
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Annotated
 
@@ -26,17 +27,54 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from acxes.config import get_settings
 from acxes.edge_api import demo_engine
+from acxes.edge_api.auth import OIDCAuthenticator
+from acxes.pdp.evaluator import PolicyDecisionPoint
+from acxes.pdp.subject_store import PostgresSubjectStore
+from acxes.retrieval.secure import RetrievalDenied, SecureRetrievalService
+from acxes.security_context import SecurityContext
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
-DEMO = os.environ.get("ACXES_FRONT_DEMO", "1") == "1"
+SETTINGS = get_settings()
+DEMO = os.environ.get("ACXES_FRONT_DEMO", "0") == "1" and SETTINGS.environment in {
+    "development",
+    "test",
+}
 KEYCLOAK_URL = os.environ.get(
-    "KEYCLOAK_PUBLIC_URL", f"http://localhost:{os.environ.get('KEYCLOAK_PORT', '8080')}"
+    "KEYCLOAK_PUBLIC_URL", f"https://localhost:{os.environ.get('KEYCLOAK_PORT', '8080')}"
 )
 KEYCLOAK_REALM = os.environ.get("KEYCLOAK_REALM", "acxes")
 KEYCLOAK_CLIENT_ID = os.environ.get("KEYCLOAK_WEB_CLIENT_ID", "acxes-chat-web")
 
-app = FastAPI(title="ACXES", version="0.1.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
+app = FastAPI(
+    title="ACXES",
+    version="0.1.0",
+    docs_url="/api/docs" if SETTINGS.environment != "production" else None,
+    openapi_url="/api/openapi.json" if SETTINGS.environment != "production" else None,
+)
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; connect-src 'self' https:; img-src 'self' data:; "
+        "style-src 'self'; script-src 'self'; frame-ancestors 'none'",
+    )
+    return response
+_authenticator = (
+    OIDCAuthenticator(SETTINGS)
+    if not DEMO and SETTINGS.oidc_issuer and SETTINGS.oidc_jwks_url
+    else None
+)
+_pdp = PolicyDecisionPoint(PostgresSubjectStore(SETTINGS))
+_retrieval = SecureRetrievalService(SETTINGS)
 
 
 class ChatRequest(BaseModel):
@@ -51,20 +89,19 @@ class DemoLoginRequest(BaseModel):
 
 
 def _require_claims(authorization: str | None = Header(default=None)) -> dict:
-    """Autentica la petición. En demo valida el token de demo.
-
-    TODO(etapa 2): validar el JWT de Keycloak (RS256 contra el JWKS, `iss`, `aud`, `exp`,
-    `nbf`, `azp`, rechazo de `alg: none`) y construir el SecurityContext. El resto del
-    sistema solo debe ver el SecurityContext, nunca el JWT.
-    """
-    if not DEMO:
-        raise HTTPException(501, "API de borde real pendiente (etapa 2). Use ACXES_FRONT_DEMO=1.")
+    """Valida un bearer token y devuelve solo claims de demo o un contexto seguro."""
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(401, "Falta el token")
-    claims = demo_engine.verify_demo_token(authorization[7:].strip())
-    if claims is None:
-        raise HTTPException(401, "Token inválido o expirado")
-    return claims
+        raise HTTPException(status_code=401, detail="Falta el token")
+    token = authorization[7:].strip()
+    if DEMO:
+        claims = demo_engine.verify_demo_token(token)
+        if claims is None:
+            raise HTTPException(status_code=401, detail="Token inválido o expirado")
+        return claims
+    if _authenticator is None:
+        raise HTTPException(status_code=503, detail="OIDC no está configurado")
+    context = _authenticator.authenticate(token, _pdp.policy_version or "")
+    return context.model_dump()
 
 
 Claims = Annotated[dict, Depends(_require_claims)]
@@ -75,18 +112,7 @@ def get_config() -> dict:
     return {
         "demo": DEMO,
         "keycloak": {"url": KEYCLOAK_URL, "realm": KEYCLOAK_REALM, "clientId": KEYCLOAK_CLIENT_ID},
-        "policy_version": demo_engine.POLICY_VERSION,
-        "demo_users": (
-            [
-                {
-                    "id": u.id, "full_name": u.full_name, "role": u.role, "dept": u.dept,
-                    "clearance": u.clearance, "acl_tags": list(u.acl_tags),
-                }
-                for u in demo_engine.DEMO_USERS
-            ]
-            if DEMO
-            else []
-        ),
+        "policy_version": _pdp.policy_version,
     }
 
 
@@ -102,16 +128,40 @@ def demo_login(body: DemoLoginRequest) -> dict:
 
 @app.get("/api/me")
 def me(claims: Claims) -> dict:
-    return demo_engine.profile(claims)
+    if DEMO:
+        return demo_engine.profile(claims)
+    return {
+        "user_id": claims["user_id"],
+        "session_id": claims["session_id"],
+        "policy_version": claims["policy_version"],
+    }
 
 
 @app.post("/api/chat")
 def chat(body: ChatRequest, claims: Claims) -> dict:
-    # TODO(etapa 4/5): reemplazar demo_engine.answer por el orquestador S:
-    #   SecurityContext -> LLM -> Tool Gateway -> PDP -> retrieval (RLS) -> guardia de salida.
-    if demo_engine.rate_limited(claims["sub"]):  # P13: 30 solicitudes por minuto
+    if DEMO:
+        if demo_engine.rate_limited(claims["sub"]):
+            raise HTTPException(429, "Demasiadas solicitudes. Espera un momento.")
+        return demo_engine.answer(claims, body.message)
+    context = SecurityContext.model_validate(claims)
+    if demo_engine.rate_limited(str(context.user_id)):
         raise HTTPException(429, "Demasiadas solicitudes. Espera un momento.")
-    return demo_engine.answer(claims, body.message)
+    decision = _pdp.evaluate(context, "search", "documentos")
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+    keywords = [word for word in re.findall(r"[\wÁÉÍÓÚÑÜáéíóúñü]+", body.message) if len(word) > 2]
+    try:
+        hits = _retrieval.search(context, decision, keywords[:8])
+    except RetrievalDenied as exc:
+        raise HTTPException(status_code=403, detail="Acceso denegado") from exc
+    return {
+        "answer": "\n\n".join(f"{hit.title}: {hit.content}" for hit in hits)
+        or demo_engine.DENIAL,
+        "citations": [
+            {"doc_id": hit.doc_id, "title": hit.title, "chunk_id": hit.chunk_id} for hit in hits
+        ],
+        "gateway": {"decision": decision.decision, "policy_version": decision.policy_version},
+    }
 
 
 @app.get("/", include_in_schema=False)

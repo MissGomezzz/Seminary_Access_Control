@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     postgres_app_password: SecretStr = SecretStr("")
     postgres_audit_password: SecretStr = SecretStr("")
     postgres_pdp_password: SecretStr = SecretStr("")
+    postgres_sslmode: Literal["disable", "require", "verify-ca", "verify-full"] = "require"
+    postgres_sslrootcert: str = ""
+
+    # OIDC. La API no acepta tokens de otro emisor, audiencia o algoritmo.
+    oidc_issuer: str = ""
+    oidc_jwks_url: str = ""
+    oidc_audience: str = "acxes-chat-api"
+    oidc_client_id: str = "acxes-chat-web"
+    oidc_algorithms: tuple[Literal["RS256"], ...] = ("RS256",)
+    environment: Literal["development", "test", "production"] = "production"
 
 
 def get_settings() -> Settings:
@@ -58,13 +68,25 @@ def postgres_dsn(settings: Settings, role: DbRole = "owner") -> str:
         user, password = "acxes_audit", settings.postgres_audit_password
     else:
         user, password = "acxes_pdp", settings.postgres_pdp_password
+    if settings.postgres_sslmode == "disable" and settings.postgres_host not in {
+        "127.0.0.1",
+        "localhost",
+        "::1",
+        "postgres",
+    }:
+        raise ValueError("sslmode=disable solo se permite para PostgreSQL local")
+    kwargs = {
+        "host": settings.postgres_host,
+        "port": settings.postgres_port,
+        "dbname": settings.postgres_db,
+        "user": user,
+        "password": password.get_secret_value(),
+        "sslmode": settings.postgres_sslmode,
+        "gssencmode": "disable",
+        "connect_timeout": 10,
+    }
+    if settings.postgres_sslrootcert:
+        kwargs["sslrootcert"] = settings.postgres_sslrootcert
     return make_conninfo(
-        host=settings.postgres_host,
-        port=settings.postgres_port,
-        dbname=settings.postgres_db,
-        user=user,
-        password=password.get_secret_value(),
-        sslmode="disable",
-        gssencmode="disable",
-        connect_timeout=10,
+        **kwargs,
     )

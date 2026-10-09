@@ -7,14 +7,15 @@
  *     decisión de seguridad).
  * Modo "demo": token de demo emitido por /api/demo/login (solo si el backend lo permite).
  *
- * Almacenamiento: sessionStorage (por pestaña). Es un compromiso de desarrollo; un despliegue
- * real debería usar el patrón BFF con cookie HttpOnly. Ver documents/FRONTEND.md.
+ * Los tokens viven solo en memoria. El verificador PKCE sí usa sessionStorage porque debe
+ * sobrevivir al redireccionamiento de vuelta desde Keycloak. Un despliegue institucional
+ * puede sustituir este módulo por un BFF con cookie HttpOnly.
  */
 
-const SESSION_KEY = "acxes.session";
 const PKCE_KEY = "acxes.pkce";
 
 let cfg = null;
+let volatileSession = null;
 
 export function init(config) { cfg = config; }
 
@@ -49,11 +50,11 @@ const redirectUri = () => `${location.origin}/`;
 const kc = (path) => `${cfg.keycloak.url}/realms/${cfg.keycloak.realm}/protocol/openid-connect/${path}`;
 
 // ---------------------------------------------------------------- sesión
-function save(session) { sessionStorage.setItem(SESSION_KEY, JSON.stringify(session)); }
+function save(session) { volatileSession = session; }
 export function current() {
-  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch { return null; }
+  return volatileSession;
 }
-export function clear() { sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(PKCE_KEY); }
+export function clear() { volatileSession = null; sessionStorage.removeItem(PKCE_KEY); }
 
 function fromTokenResponse(t, mode) {
   return {

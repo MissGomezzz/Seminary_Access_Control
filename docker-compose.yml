@@ -17,7 +17,9 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
-    command: start-dev --import-realm --health-enabled=true
+    # Solo expuesto en loopback para desarrollo local. En producción se requiere
+    # un reverse proxy TLS y no se debe importar el realm de desarrollo.
+    command: start --http-enabled=true --hostname-strict=false --import-realm --health-enabled=true
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}

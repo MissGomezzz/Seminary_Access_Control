@@ -155,7 +155,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "acxes123",
+          "value": "REPLACE_BEFORE_IMPORT",
           "temporary": false
         }
       ]
@@ -183,7 +183,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "acxes123",
+          "value": "REPLACE_BEFORE_IMPORT",
           "temporary": false
         }
       ]
@@ -211,7 +211,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "acxes123",
+          "value": "REPLACE_BEFORE_IMPORT",
           "temporary": false
         }
       ]
@@ -241,7 +241,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "acxes123",
+          "value": "REPLACE_BEFORE_IMPORT",
           "temporary": false
         }
       ]
@@ -271,7 +271,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "acxes123",
+          "value": "REPLACE_BEFORE_IMPORT",
           "temporary": false
         }
       ]
@@ -299,7 +299,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "acxes123",
+          "value": "REPLACE_BEFORE_IMPORT",
           "temporary": false
         }
       ]

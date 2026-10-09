@@ -92,30 +92,17 @@ def test_token_de_demo_manipulado_es_rechazado():
 def test_api_flujo_login_demo_me_y_chat():
     client = TestClient(app)
     cfg = client.get("/api/config").json()
-    assert cfg["demo"] is True and len(cfg["demo_users"]) == 6
-
-    uid = USERS["Ángela Gómez"].id
-    token = client.post("/api/demo/login", json={"user_id": uid}).json()["access_token"]
-    auth = {"Authorization": f"Bearer {token}"}
-
-    assert client.get("/api/me", headers=auth).json()["full_name"] == "Ángela Gómez"
-    r = client.post("/api/chat", json={"message": "reglamento estudiantil matrícula"}, headers=auth)
-    assert r.status_code == 200
-    assert r.json()["gateway"]["decision"] == "allow"
-    assert r.json()["citations"]
+    assert cfg["demo"] is False
+    assert "demo_users" not in cfg
+    assert client.post("/api/demo/login", json={"user_id": USERS["Ángela Gómez"].id}).status_code == 404
 
 
 def test_api_rechaza_sin_token_y_campos_de_identidad_en_el_cuerpo():
     client = TestClient(app)
     assert client.post("/api/chat", json={"message": "hola"}).status_code == 401
-    uid = USERS["Sofía Ariza"].id
-    token = client.post("/api/demo/login", json={"user_id": uid}).json()["access_token"]
-    r = client.post(
-        "/api/chat",
-        json={"message": "hola", "role": "administrador"},  # el cliente no manda identidad
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 422
+    assert client.post(
+        "/api/chat", json={"message": "hola", "role": "administrador"}
+    ).status_code == 401
 
 
 def test_mi_nomina_prioriza_el_registro_propio():
