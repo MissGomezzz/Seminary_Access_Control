@@ -10,7 +10,7 @@ Si la decisión no es de acceso, no abre conexión. Un documento inexistente y u
 autorizado producen el mismo resultado (P12).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from uuid import UUID
 
 import psycopg
@@ -18,7 +18,7 @@ import psycopg
 from acxes.config import Settings, postgres_dsn
 from acxes.pdp.model import Decision, Predicate
 from acxes.retrieval.lexical import SECURE_SEARCH_CHUNKS_SQL, keywords_to_or_query, predicate_clause
-from acxes.retrieval.types import ChunkHit, DocumentRecord
+from acxes.retrieval.types import ChunkHit, ChunkMeta, DocumentRecord
 from acxes.security_context import SecurityContext
 
 _DOCUMENT_SQL = (
@@ -28,6 +28,12 @@ _DOCUMENT_CHUNKS_SQL = (
     f"SELECT c.id, c.content FROM chunks c WHERE c.doc_id = %(doc_id)s AND {predicate_clause('c')} "
     "ORDER BY c.chunk_index"
 )
+_DESCRIBE_SQL = f"""
+SELECT c.id, c.doc_id, d.title, c.dept, c.sensitivity::text, c.acl_tags
+FROM chunks c
+JOIN documents d ON d.id = c.doc_id
+WHERE c.id = ANY(%(chunk_ids)s::uuid[]) AND {predicate_clause("c")}
+"""
 
 
 class RetrievalDenied(Exception):
@@ -74,6 +80,26 @@ class SecureRetrievalService:
             return DocumentRecord(str(doc_id), title, chunks)
 
         return self._run(decision, query)
+
+    def describe_chunks(
+        self, ctx: SecurityContext, decision: Decision, chunk_ids: Sequence[str]
+    ) -> list[ChunkMeta]:
+        """Metadatos de los fragmentos que vio el modelo, para citar sus fuentes en la interfaz.
+
+        Aplica el mismo predicado y las mismas variables de sesión que la búsqueda, así que un
+        identificador no autorizado no devuelve nada, igual que uno inexistente (P12). Conserva
+        el orden recibido y no devuelve contenido.
+        """
+        predicate = _require_allowed(ctx, decision)
+        if not chunk_ids:
+            return []
+        params = _predicate_params(predicate) | {"chunk_ids": list(chunk_ids)}
+        rows = self._run(decision, lambda cur: _fetch(cur, _DESCRIBE_SQL, params))
+        found = {
+            str(cid): ChunkMeta(str(cid), str(did), title, dept, sens, tuple(tags))
+            for cid, did, title, dept, sens, tags in rows
+        }
+        return [found[c] for c in chunk_ids if c in found]
 
     def _run(self, decision: Decision, query):
         variables = _session_variables(decision)

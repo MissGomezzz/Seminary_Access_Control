@@ -6,6 +6,8 @@ La API de borde (etapa 2) crea una instancia por proceso y llama a
 `agent.respond(security_context, mensaje)` en cada petición.
 """
 
+from dataclasses import dataclass
+
 from acxes.config import Settings, get_settings
 from acxes.orchestrator.history import InMemoryHistoryStore
 from acxes.orchestrator.llm_client import LLMClient, NaiveMockLLMClient, build_llm_client
@@ -28,12 +30,33 @@ def build_agent_llm(settings: Settings) -> LLMClient:
     return build_llm_client(settings)
 
 
-def build_secure_agent(settings: Settings | None = None) -> SecureAgent:
+@dataclass(frozen=True)
+class SecureStack:
+    """Las piezas de S que la API de borde necesita, una instancia por proceso.
+
+    El PDP es el mismo que usa el gateway. El servicio de recuperación sigue siendo el único
+    componente con credencial de aplicación: la API de borde solo le pide los metadatos de las
+    fuentes citadas, con el mismo predicado y las mismas variables de sesión.
+    """
+
+    agent: SecureAgent
+    pdp: PolicyDecisionPoint
+    retrieval: SecureRetrievalService
+
+
+def build_secure_stack(settings: Settings | None = None) -> SecureStack:
     settings = settings or get_settings()
-    return SecureAgent(
+    pdp = PolicyDecisionPoint(PostgresSubjectStore(settings))
+    retrieval = SecureRetrievalService(settings)
+    agent = SecureAgent(
         build_agent_llm(settings),
-        build_gateway(settings),
+        ToolGateway(pdp, retrieval),
         InMemoryHistoryStore(),
         max_iterations=settings.agent_max_iterations,
         max_turn_tokens=settings.agent_max_turn_tokens,
     )
+    return SecureStack(agent, pdp, retrieval)
+
+
+def build_secure_agent(settings: Settings | None = None) -> SecureAgent:
+    return build_secure_stack(settings).agent

@@ -24,7 +24,6 @@ import re
 import secrets
 import time
 import unicodedata
-from collections import defaultdict, deque
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -38,7 +37,6 @@ POLICY_VERSION = "2026-09-01.1"
 LEVELS = ("publico", "interno", "confidencial", "restringido")
 DEPTS = ("institucional", "academica", "financiera")
 MAX_BY_ROLE = {"empleado": "interno", "supervisor": "confidencial", "administrador": "confidencial"}
-RATE_LIMIT_PER_MIN = 30  # P13
 K = 5  # P13
 DENIAL = "No encontré información disponible para tu perfil sobre esa consulta."  # P12/P17
 
@@ -269,20 +267,6 @@ def _excerpt(body: str, limit: int = 340) -> str:
     return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "…"
 
 
-_hits: dict[str, deque] = defaultdict(deque)
-
-
-def rate_limited(user_id: str) -> bool:
-    now = time.time()
-    q = _hits[user_id]
-    while q and q[0] < now - 60:
-        q.popleft()
-    if len(q) >= RATE_LIMIT_PER_MIN:
-        return True
-    q.append(now)
-    return False
-
-
 def answer(claims: dict, message: str) -> dict:
     """Ejecuta un turno de demo y devuelve el contrato JSON que consume el front."""
     started = time.perf_counter()
@@ -292,7 +276,8 @@ def answer(claims: dict, message: str) -> dict:
         "decision": "deny",
         "predicate": None,
         "tool_calls": [],
-        "output_guard": "passed",
+        "chunks": 0,
+        "output_guard": "pending",
         "iterations": 1,
         "prompt_tokens": 0,
         "completion_tokens": 0,
@@ -301,9 +286,10 @@ def answer(claims: dict, message: str) -> dict:
         pred = build_predicate(claims)
     except Denied:
         trace["latency_s"] = round(time.perf_counter() - started, 3)
-        return {"answer": DENIAL, "citations": [], "gateway": trace}
+        return {"answer": DENIAL, "status": "denied", "citations": [], "gateway": trace}
 
     trace["predicate"] = pred.as_dict()
+    trace["decision"] = "allow"
     keywords = list(dict.fromkeys(_tokens(message)))[:8]
     visible = [d for d in load_corpus() if is_visible(d, pred)]  # autorizar ANTES de buscar
 
@@ -329,9 +315,9 @@ def answer(claims: dict, message: str) -> dict:
     ]
     if not top:
         trace["latency_s"] = round(time.perf_counter() - started, 3)
-        return {"answer": DENIAL, "citations": [], "gateway": trace}
+        return {"answer": DENIAL, "status": "no_results", "citations": [], "gateway": trace}
 
-    trace["decision"] = "allow"
+    trace["chunks"] = len(top)
     best = top[0]
     text = f"Según **{best.title}**: {_excerpt(best.body)}"
     if len(top) > 1:
@@ -344,22 +330,34 @@ def answer(claims: dict, message: str) -> dict:
             "dept": d.dept,
             "sensitivity": d.sensitivity,
             "acl_tags": list(d.acl_tags),
+            "chunk_ids": [f"{d.slug}#0"],
         }
         for d in top
     ]
     trace["latency_s"] = round(time.perf_counter() - started, 3)
-    return {"answer": text, "citations": citations, "gateway": trace}
+    return {"answer": text, "status": "answered", "citations": citations, "gateway": trace}
+
+
+def display_name(user_id: str) -> str | None:
+    user = _BY_ID.get(user_id)
+    return user.full_name if user else None
 
 
 def profile(claims: dict) -> dict:
-    user = _BY_ID.get(claims.get("sub", ""))
+    """Perfil del modo demo. En los modos con agente real lo calcula el PDP, no los claims."""
     roles = [r for r in claims.get("realm_access", {}).get("roles", []) if r in MAX_BY_ROLE]
+    try:
+        pred = build_predicate(claims)
+        allowed_depts, clearance = list(pred.allowed_depts), pred.max_sensitivity
+    except Denied:
+        allowed_depts, clearance = [], claims.get("clearance")
     return {
         "user_id": claims.get("sub"),
-        "full_name": user.full_name if user else "Usuario",
+        "full_name": display_name(claims.get("sub", "")) or "Usuario",
         "roles": roles,
         "dept": claims.get("dept"),
-        "clearance": claims.get("clearance"),
+        "clearance": clearance,
+        "allowed_depts": allowed_depts,
         "acl_tags": claims.get("acl_tags", []),
         "policy_version": POLICY_VERSION,
     }

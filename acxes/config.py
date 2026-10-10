@@ -43,6 +43,20 @@ class Settings(BaseSettings):
     postgres_audit_password: SecretStr = SecretStr("")
     postgres_pdp_password: SecretStr = SecretStr("")
 
+    # API de borde y front (acxes/edge_api/app.py)
+    #   demo:     sin Docker. Motor de prueba que no es la arquitectura Secure
+    #   dev:      agente S real (PDP, gateway, RLS) con sesiones de prueba, sin Keycloak
+    #   keycloak: agente S real y tokens RS256 de Keycloak
+    acxes_mode: Literal["demo", "dev", "keycloak"] = "demo"
+    keycloak_public_url: str = "http://localhost:8080"
+    keycloak_realm: str = "acxes"
+    keycloak_web_client_id: str = "acxes-chat-web"
+    keycloak_api_audience: str = "acxes-chat-api"
+    # Si se deja vacío se usa `{emisor}/protocol/openid-connect/certs`
+    keycloak_jwks_url: str = ""
+    # P13: solicitudes de chat por usuario y por minuto
+    rate_limit_per_minute: int = 30
+
 
 def get_settings() -> Settings:
     return Settings()

@@ -117,7 +117,7 @@ function step(state, title, ...detail) {
 export function traceView(g, profile) {
   const p = g.predicate;
   const tools = g.tool_calls || [];
-  const chunks = tools.reduce((n, t) => n + (t.chunks || 0), 0);
+  const chunks = g.chunks ?? tools.reduce((n, t) => n + (t.chunks || 0), 0);
   const demo = g.engine === "demo";
   const steps = [];
 
@@ -150,9 +150,9 @@ export function traceView(g, profile) {
     steps.push(step("skip", "5 · Recuperación con RLS", h("small", {}, "No aplica.")));
   }
 
-  const guard = g.output_guard || "passed";
-  steps.push(step(guard === "blocked" ? "deny" : p ? "ok" : "skip", "6 · Guardia de salida",
-    h("small", {}, guard === "blocked" ? "Respuesta bloqueada." : guard === "redacted" ? "Se redactaron datos personales." : chunks ? "Toda afirmación cita un fragmento autorizado." : "Mensaje único de denegación (P17).")));
+  const guard = g.output_guard || "pending";
+  steps.push(step(guard === "blocked" ? "deny" : guard === "pending" ? "skip" : p ? "ok" : "skip", "6 · Guardia de salida",
+    h("small", {}, guard === "blocked" ? "Respuesta bloqueada." : guard === "redacted" ? "Se redactaron datos personales." : guard === "pending" ? "Aún no implementada (etapa 5). El filtrado ya ocurrió antes del modelo, con PDP y RLS." : chunks ? "Toda afirmación cita un fragmento autorizado." : "Mensaje único de denegación (P17).")));
 
   return h("div", { class: "trace" },
     h("h4", {}, h("span", {}, "Traza del AI Gateway"), h("span", {}, g.decision === "allow" ? "Permitido" : "Sin resultados para tu perfil")),
@@ -161,7 +161,7 @@ export function traceView(g, profile) {
       h("span", {}, `${g.latency_s ?? "—"} s`), h("span", {}, `${g.iterations ?? 1} iteración(es)`),
       h("span", {}, `${(g.prompt_tokens || 0) + (g.completion_tokens || 0)} tokens`),
       h("span", {}, `política ${g.policy_version || "—"}`),
-      demo ? h("span", {}, "motor: demo") : null));
+      demo ? h("span", {}, "motor: demo") : h("span", {}, "motor: S (real)")));
 }
 
 // ---------------------------------------------------------------- vacío + sugerencias
