@@ -4,10 +4,16 @@ front se construye y se prueba sobre él. Sin red, sin Docker."""
 import pytest
 from fastapi.testclient import TestClient
 
+from acxes.config import Settings
 from acxes.edge_api import demo_engine as de
-from acxes.edge_api.app import app
+from acxes.edge_api.app import create_app
 
 USERS = {u.full_name: u for u in de.DEMO_USERS}
+
+
+def _client() -> TestClient:
+    # Siempre en modo demo, sin importar lo que diga el .env de quien corre las pruebas
+    return TestClient(create_app(Settings(acxes_mode="demo")))
 
 
 def _claims(name: str) -> dict:
@@ -90,7 +96,7 @@ def test_token_de_demo_manipulado_es_rechazado():
 
 
 def test_api_flujo_login_demo_me_y_chat():
-    client = TestClient(app)
+    client = _client()
     cfg = client.get("/api/config").json()
     assert cfg["demo"] is True and len(cfg["demo_users"]) == 6
 
@@ -106,7 +112,7 @@ def test_api_flujo_login_demo_me_y_chat():
 
 
 def test_api_rechaza_sin_token_y_campos_de_identidad_en_el_cuerpo():
-    client = TestClient(app)
+    client = _client()
     assert client.post("/api/chat", json={"message": "hola"}).status_code == 401
     uid = USERS["Sofía Ariza"].id
     token = client.post("/api/demo/login", json={"user_id": uid}).json()["access_token"]
