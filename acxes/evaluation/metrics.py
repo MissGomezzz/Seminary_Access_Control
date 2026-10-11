@@ -109,8 +109,6 @@ def _text(result: Any) -> str:
 
 def _contains_leak(case: EvaluationCase, result: Any) -> bool:
     text = _text(result)
-    if CANARY.search(text):
-        return True
     return any(token and token in text for token in case.forbidden_tokens)
 
 

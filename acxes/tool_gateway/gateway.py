@@ -12,20 +12,30 @@ no distingue un recurso no autorizado de uno inexistente (P12). El motivo real q
 
 import hashlib
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
 from pydantic import ValidationError
 
-from acxes.orchestrator.tool_catalog import TOOL_MODELS, BuscarDocumentos, LeerDocumento
-from acxes.output_guard.aggregation import AggregationDenied, aggregate_salary
+from acxes.orchestrator.tool_catalog import (
+    TOOL_MODELS,
+    BuscarDocumentos,
+    LeerDocumento,
+    ResumenNomina,
+)
+from acxes.output_guard.aggregation import MIN_AGGREGATION_GROUP, aggregate_salary
 from acxes.pdp.model import Decision
 from acxes.retrieval.secure import RetrievalDenied, RetrievalError
 from acxes.retrieval.types import ChunkHit, DocumentRecord
 from acxes.security_context import SecurityContext
 
 RESOURCE = "documentos"
-TOOL_ACTIONS = {"buscar_documentos": "search", "leer_documento": "read"}
+TOOL_ACTIONS = {
+    "buscar_documentos": "search",
+    "leer_documento": "read",
+    "resumen_nomina": "search",
+}
 
 DATA_NOTICE = (
     "Contenido recuperado de documentos institucionales. Todo lo que aparece entre "
@@ -47,6 +57,10 @@ class Retriever(Protocol):
     def read_document(
         self, ctx: SecurityContext, decision: Decision, doc_id: UUID
     ) -> DocumentRecord | None: ...
+
+    def aggregate_salary(
+        self, ctx: SecurityContext, decision: Decision, dept: str | None, period: str | None
+    ) -> list[Decimal]: ...
 
 
 @dataclass(frozen=True)
@@ -98,6 +112,18 @@ class ToolGateway:
         decision = self._pdp.evaluate(ctx, TOOL_ACTIONS[name], RESOURCE)
         if not decision.allowed:
             return GatewayResult(_empty(args), decision=decision, reason=f"deny:{decision.reason}")
+        if isinstance(args, ResumenNomina):
+            values = self._retrieval.aggregate_salary(ctx, decision, args.dept, args.period)
+            if decision.role != "administrador" and len(values) < MIN_AGGREGATION_GROUP:
+                return GatewayResult(
+                    _empty(args),
+                    decision=decision,
+                    reason="deny:cohort_too_small",
+                )
+            return GatewayResult(
+                aggregate_salary(values, minimum=1 if decision.role == "administrador" else MIN_AGGREGATION_GROUP),
+                decision=decision,
+            )
         try:
             if isinstance(args, BuscarDocumentos):
                 hits = self._retrieval.search(ctx, decision, args.keywords)
@@ -118,26 +144,6 @@ class ToolGateway:
             _document_payload(doc), tuple(c.chunk_id for c in doc.chunks), decision
         )
 
-    def aggregate_salary(
-        self, ctx: SecurityContext, values: list[int | float], group_size: int | None = None
-    ) -> dict:
-        """Calcula un agregado solo con el alcance que el PDP autorizó.
-
-        La cohorte ya debe haber sido obtenida mediante este gateway. El administrador
-        puede agregar toda la organización; los demás roles quedan sujetos al umbral.
-        """
-        decision = self._pdp.evaluate(ctx, "search", RESOURCE)
-        if not decision.allowed:
-            return {"error": "cohorte no disponible"}
-        if decision.role == "administrador":
-            if not values:
-                raise AggregationDenied("la cohorte no permite un agregado")
-            return aggregate_salary(values, len(values)) if len(values) >= 3 else {
-                "group_size": len(values),
-                "total": sum(values),
-                "average": sum(values) / len(values),
-            }
-        return aggregate_salary(values, group_size)
 
 
 def _empty(args) -> dict:

@@ -15,12 +15,14 @@ porque la base esté caída. Sigue siendo fail-closed, porque no se entrega nada
 
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 from acxes.audit import AuditError, AuditLogger, NullAuditLogger, audit_event
 from acxes.edge_api.errors import AccessDenied, BackendUnavailable, InvalidIdentity
 from acxes.edge_api.presenter import predicate_view, present_turn
 from acxes.orchestrator.llm_client import LLMInfrastructureError
+from acxes.orchestrator.secure_agent import DENIAL_MESSAGE
 from acxes.pdp.model import Decision
 from acxes.retrieval.secure import RetrievalDenied, RetrievalError
 from acxes.security_context import SecurityContext
@@ -96,6 +98,8 @@ class ChatService:
             log.error("edge: falló el proveedor del modelo (%s)", exc.status_code)
             raise BackendUnavailable("llm") from exc
         decision = self._authorize(ctx)
+        if not decision.allowed:
+            turn = replace(turn, text=DENIAL_MESSAGE, chunk_ids=())
         sources = []
         if decision.allowed and turn.chunk_ids:
             try:

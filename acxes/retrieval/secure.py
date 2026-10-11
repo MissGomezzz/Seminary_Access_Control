@@ -11,6 +11,7 @@ autorizado producen el mismo resultado (P12).
 """
 
 from collections.abc import Callable, Sequence
+from decimal import Decimal
 from uuid import UUID
 
 import psycopg
@@ -33,6 +34,13 @@ SELECT c.id, c.doc_id, d.title, c.dept, c.sensitivity::text, c.acl_tags
 FROM chunks c
 JOIN documents d ON d.id = c.doc_id
 WHERE c.id = ANY(%(chunk_ids)s::uuid[]) AND {predicate_clause("c")}
+"""
+_SALARY_SQL = """
+SELECT salary
+FROM users
+WHERE salary IS NOT NULL
+  AND (%(role)s = 'administrador' OR dept = ANY(%(depts)s::text[]))
+  AND (%(dept)s IS NULL OR dept = %(dept)s)
 """
 
 
@@ -100,6 +108,23 @@ class SecureRetrievalService:
             for cid, did, title, dept, sens, tags in rows
         }
         return [found[c] for c in chunk_ids if c in found]
+
+    def aggregate_salary(
+        self,
+        ctx: SecurityContext,
+        decision: Decision,
+        dept: str | None = None,
+        period: str | None = None,
+    ) -> list[Decimal]:
+        """Obtiene salarios dentro del predicado; nunca acepta una cohorte del modelo."""
+        predicate = _require_allowed(ctx, decision)
+        params = _predicate_params(predicate) | {
+            "role": decision.role or "",
+            "dept": dept,
+            "period": period,
+        }
+        rows = self._run(decision, lambda cur: _fetch(cur, _SALARY_SQL, params))
+        return [Decimal(str(row[0])) for row in rows]
 
     def _run(self, decision: Decision, query):
         variables = _session_variables(decision)

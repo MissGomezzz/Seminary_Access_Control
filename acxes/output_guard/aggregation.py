@@ -20,8 +20,9 @@ def require_minimum_group(
 
 
 def aggregate_salary(
-    values: Sequence[int | float | Decimal],
+    values: Sequence[Decimal | int | float],
     group_size: int | None = None,
+    minimum: int = MIN_AGGREGATION_GROUP,
 ) -> dict[str, int | Decimal]:
     """Calcula total y promedio después de validar el tamaño de la cohorte."""
     if not values:
@@ -29,7 +30,7 @@ def aggregate_salary(
     actual_size = len(values)
     if group_size is not None and actual_size != group_size:
         raise AggregationDenied("el tamaño de la cohorte no coincide")
-    require_minimum_group(actual_size)
+    require_minimum_group(actual_size, minimum)
     total = sum((Decimal(str(value)) for value in values), Decimal(0))
     return {
         "group_size": actual_size,

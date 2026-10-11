@@ -19,13 +19,13 @@ INSERT INTO role_permissions (role_id, permission_id)
     SELECT ro.id, p.id FROM roles ro, permissions p;
 
 -- Usuarios de prueba. El nivel sale del rol (P7) y las etiquetas siguen a P6
-INSERT INTO users (id, full_name, dept, clearance, acl_tags) VALUES
-    ('00000000-0000-4000-a000-000000000001', 'Sofía Ariza',     'financiera',    'interno',      '{}'),
-    ('00000000-0000-4000-a000-000000000002', 'Belén Quintero',  'financiera',    'interno',      '{}'),
-    ('00000000-0000-4000-a000-000000000003', 'Ángela Gómez',    'academica',     'interno',      '{}'),
-    ('00000000-0000-4000-a000-000000000004', 'Laura Martínez',  'financiera',    'confidencial', '{auditoria_interna}'),
-    ('00000000-0000-4000-a000-000000000005', 'Carlos Rentería', 'academica',     'confidencial', '{comite_disciplinario}'),
-    ('00000000-0000-4000-a000-000000000006', 'Diego Fajardo',   'institucional', 'confidencial', '{}');
+INSERT INTO users (id, full_name, dept, clearance, acl_tags, salary) VALUES
+    ('00000000-0000-4000-a000-000000000001', 'Sofía Ariza',     'financiera',    'interno',      '{}', 4200000),
+    ('00000000-0000-4000-a000-000000000002', 'Belén Quintero',  'financiera',    'interno',      '{}', 4350000),
+    ('00000000-0000-4000-a000-000000000003', 'Ángela Gómez',   'academica',     'interno',      '{}', 4100000),
+    ('00000000-0000-4000-a000-000000000004', 'Laura Martínez',  'financiera',    'confidencial', '{auditoria_interna}', 6800000),
+    ('00000000-0000-4000-a000-000000000005', 'Carlos Rentería', 'academica',     'confidencial', '{comite_disciplinario}', 7000000),
+    ('00000000-0000-4000-a000-000000000006', 'Diego Fajardo',   'institucional', 'confidencial', '{}', 9500000);
 
 INSERT INTO user_roles (user_id, role_id)
     SELECT u.id, r.id FROM (VALUES

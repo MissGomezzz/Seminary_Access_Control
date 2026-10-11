@@ -29,7 +29,8 @@ CREATE TABLE users (
     full_name   TEXT NOT NULL UNIQUE,
     dept        TEXT NOT NULL CHECK (dept IN ('institucional', 'academica', 'financiera')),
     clearance   sensitivity_level NOT NULL,
-    acl_tags    TEXT[] NOT NULL DEFAULT '{}'
+    acl_tags    TEXT[] NOT NULL DEFAULT '{}',
+    salary      NUMERIC(14, 2)
 );
 
 CREATE TABLE roles (

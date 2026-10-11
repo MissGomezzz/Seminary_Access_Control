@@ -17,9 +17,9 @@ _EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 # El prefijo internacional es obligatorio para números que no sean colombianos.
 _PHONE = re.compile(
     r"(?<![\d])(?:"
-    r"\+57[ \t]?3\d{2}(?:[ \t]?\d{3})?(?:[ \t]?\d{4})"
-    r"|3\d{2}(?:[ \t]?\d{3})?(?:[ \t]?\d{4})"
-    r"|\+(?:[1-9]\d{0,2})[ \t]?(?:\d{3}[ \t]?\d{3}[ \t]?\d{4})"
+    r"\+57[ \t]?3\d{2}[ \t]?\d{3}[ \t]?\d{4}"
+    r"|3\d{2}[ \t]?\d{3}[ \t]?\d{4}"
+    r"|\+(?:[1-9]\d{0,2})[ \t]?\d{3}[ \t]?\d{3}[ \t]?\d{4}"
     r")(?![\d])"
 )
 _ID = re.compile(

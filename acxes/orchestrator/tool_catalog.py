@@ -31,9 +31,19 @@ class LeerDocumento(BaseModel):
     doc_id: UUID = Field(description="Identificador del documento, tomado de una búsqueda previa")
 
 
+class ResumenNomina(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dept: Keyword | None = Field(
+        default=None, description="Dependencia autorizada; omítela para el alcance permitido"
+    )
+    period: Keyword | None = Field(default=None, description="Periodo de nómina")
+
+
 TOOL_MODELS: dict[str, type[BaseModel]] = {
     "buscar_documentos": BuscarDocumentos,
     "leer_documento": LeerDocumento,
+    "resumen_nomina": ResumenNomina,
 }
 
 _DESCRIPTIONS = {
@@ -42,11 +52,15 @@ _DESCRIPTIONS = {
         "y sinónimos elegidos por el asistente."
     ),
     "leer_documento": "Devuelve el contenido de un documento a partir de su identificador.",
+    "resumen_nomina": "Calcula un total y promedio de nómina en la cohorte autorizada.",
 }
 
 
-def tool_specs() -> tuple[ToolSpec, ...]:
+def tool_specs(*, include_aggregation: bool = False) -> tuple[ToolSpec, ...]:
+    models = TOOL_MODELS if include_aggregation else {
+        name: model for name, model in TOOL_MODELS.items() if name != "resumen_nomina"
+    }
     return tuple(
         ToolSpec(name=name, description=_DESCRIPTIONS[name], parameters=model.model_json_schema())
-        for name, model in TOOL_MODELS.items()
+        for name, model in models.items()
     )

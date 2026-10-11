@@ -71,7 +71,9 @@ class SecureAgent:
         decisiones: list[ToolDecision] = []
 
         while iteraciones < self._max_iterations:
-            respuesta = self._llm.complete(SYSTEM_PROMPT, mensajes, tool_specs())
+            respuesta = self._llm.complete(
+                SYSTEM_PROMPT, mensajes, tool_specs(include_aggregation=True)
+            )
             iteraciones += 1
             prompt_tokens += respuesta.usage.prompt_tokens
             completion_tokens += respuesta.usage.completion_tokens
@@ -93,7 +95,7 @@ class SecureAgent:
                 llamadas.append(llamada)
                 resultado = self._ejecutar(ctx, llamada)
                 decisiones.append(
-                    ToolDecision(llamada.name, resultado.reason, resultado.decision is not None and resultado.decision.allowed)
+                    ToolDecision(llamada.name, resultado.reason, resultado.reason == "ok")
                 )
                 chunk_ids.extend(resultado.chunk_ids)
                 mensajes.append(
