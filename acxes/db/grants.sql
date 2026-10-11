@@ -9,7 +9,7 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM acxes_app, acxes_audit, acxes_pdp
 
 GRANT USAGE ON SCHEMA public TO acxes_app, acxes_audit, acxes_pdp;
 
-GRANT SELECT ON documents, chunks TO acxes_app;
+GRANT SELECT ON documents, chunks, payroll_cohort TO acxes_app;
 GRANT INSERT ON audit_log TO acxes_app;
 
 GRANT SELECT, INSERT ON audit_log TO acxes_audit;

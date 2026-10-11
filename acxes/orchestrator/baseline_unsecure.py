@@ -97,9 +97,7 @@ class UnsecureAgent:
         iteraciones = 0
 
         while iteraciones < self._max_iterations:
-            respuesta = self._llm.complete(
-                system, self._historial, tool_specs(include_aggregation=True)
-            )
+            respuesta = self._llm.complete(system, self._historial, tool_specs())
             iteraciones += 1
             prompt_tokens += respuesta.usage.prompt_tokens
             completion_tokens += respuesta.usage.completion_tokens

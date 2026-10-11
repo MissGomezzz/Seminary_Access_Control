@@ -24,7 +24,11 @@ from acxes.orchestrator.tool_catalog import (
     LeerDocumento,
     ResumenNomina,
 )
-from acxes.output_guard.aggregation import MIN_AGGREGATION_GROUP, aggregate_salary
+from acxes.output_guard.aggregation import (
+    MIN_AGGREGATION_GROUP,
+    AggregationDenied,
+    aggregate_salary,
+)
 from acxes.pdp.model import Decision
 from acxes.retrieval.secure import RetrievalDenied, RetrievalError
 from acxes.retrieval.types import ChunkHit, DocumentRecord
@@ -59,7 +63,7 @@ class Retriever(Protocol):
     ) -> DocumentRecord | None: ...
 
     def aggregate_salary(
-        self, ctx: SecurityContext, decision: Decision, dept: str | None, period: str | None
+        self, ctx: SecurityContext, decision: Decision, dept: str | None
     ) -> list[Decimal]: ...
 
 
@@ -72,6 +76,7 @@ class GatewayResult:
     # Para la auditoría y la guardia de salida (etapa 5). Nunca van al modelo
     decision: Decision | None = None
     reason: str = "ok"
+    aggregate: bool = False
 
 
 class ToolGateway:
@@ -112,19 +117,15 @@ class ToolGateway:
         decision = self._pdp.evaluate(ctx, TOOL_ACTIONS[name], RESOURCE)
         if not decision.allowed:
             return GatewayResult(_empty(args), decision=decision, reason=f"deny:{decision.reason}")
-        if isinstance(args, ResumenNomina):
-            values = self._retrieval.aggregate_salary(ctx, decision, args.dept, args.period)
-            if decision.role != "administrador" and len(values) < MIN_AGGREGATION_GROUP:
-                return GatewayResult(
-                    _empty(args),
-                    decision=decision,
-                    reason="deny:cohort_too_small",
-                )
-            return GatewayResult(
-                aggregate_salary(values, minimum=1 if decision.role == "administrador" else MIN_AGGREGATION_GROUP),
-                decision=decision,
-            )
         try:
+            if isinstance(args, ResumenNomina):
+                # No administrador puede variar el alcance: el PDP fija una sola cohorte.
+                dept = args.dept if decision.role == "administrador" else None
+                values = self._retrieval.aggregate_salary(ctx, decision, dept)
+                minimum = 1 if decision.role == "administrador" else MIN_AGGREGATION_GROUP
+                return GatewayResult(
+                    aggregate_salary(values, minimum=minimum), decision=decision, aggregate=True
+                )
             if isinstance(args, BuscarDocumentos):
                 hits = self._retrieval.search(ctx, decision, args.keywords)
                 return GatewayResult(
@@ -138,6 +139,8 @@ class ToolGateway:
             return GatewayResult(
                 {"error": "servicio no disponible"}, decision=decision, reason="retrieval_error"
             )
+        except AggregationDenied:
+            return GatewayResult(_empty(args), decision=decision, reason="deny:empty_cohort")
         if doc is None:
             return GatewayResult(_empty(args), decision=decision, reason="not_found")
         return GatewayResult(

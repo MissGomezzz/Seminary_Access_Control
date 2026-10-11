@@ -34,6 +34,7 @@ class TurnResult:
     # Verdadero si se agotó el tope de iteraciones sin respuesta final
     truncated: bool = False
     tool_decisions: tuple[ToolDecision, ...] = ()
+    aggregate: bool = False
 
 
 def to_json(data: dict) -> str:

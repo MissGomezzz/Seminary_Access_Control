@@ -37,7 +37,6 @@ class ResumenNomina(BaseModel):
     dept: Keyword | None = Field(
         default=None, description="Dependencia autorizada; omítela para el alcance permitido"
     )
-    period: Keyword | None = Field(default=None, description="Periodo de nómina")
 
 
 TOOL_MODELS: dict[str, type[BaseModel]] = {

@@ -13,6 +13,7 @@ DROP TABLE IF EXISTS user_roles CASCADE;
 DROP TABLE IF EXISTS roles CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS policy_version CASCADE;
+DROP VIEW IF EXISTS payroll_cohort CASCADE;
 DROP FUNCTION IF EXISTS chunks_inherit_from_document() CASCADE;
 DROP FUNCTION IF EXISTS documents_propagate_to_chunks() CASCADE;
 DROP FUNCTION IF EXISTS pdp_subject(UUID) CASCADE;
@@ -32,6 +33,11 @@ CREATE TABLE users (
     acl_tags    TEXT[] NOT NULL DEFAULT '{}',
     salary      NUMERIC(14, 2)
 );
+
+CREATE VIEW payroll_cohort AS
+SELECT dept, salary
+FROM users
+WHERE salary IS NOT NULL;
 
 CREATE TABLE roles (
     id    SERIAL PRIMARY KEY,

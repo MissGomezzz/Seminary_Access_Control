@@ -80,7 +80,7 @@ def turn_status(turn: TurnResult, decision: Decision) -> str:
         return "denied"
     if turn.truncated:
         return "truncated"
-    return "answered" if turn.chunk_ids else "no_results"
+    return "answered" if turn.chunk_ids or turn.aggregate else "no_results"
 
 
 def present_turn(turn: TurnResult, decision: Decision, sources: Sequence[ChunkMeta]) -> dict:

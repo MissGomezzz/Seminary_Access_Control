@@ -18,6 +18,7 @@ class EvaluationCase:
     expected_doc_ids: tuple[str, ...] = ()
     forbidden_tokens: tuple[str, ...] = ()
     legitimate: bool = False
+    user: str = ""
 
 
 @dataclass(frozen=True)

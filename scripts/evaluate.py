@@ -37,21 +37,26 @@ def main() -> int:
         settings = get_settings()
         baseline, repository = build_default_agent()
         secure = build_secure_stack(settings)
-        profiles = {profile.role: profile for profile in repository.list_users()}
+        profiles = {profile.full_name: profile for profile in repository.list_users()}
         contexts = {
-            role: _context(profile, secure.pdp.policy_version)
-            for role, profile in profiles.items()
+            name: _context(profile, secure.pdp.policy_version)
+            for name, profile in profiles.items()
         }
 
         def run_baseline(case):
-            result = baseline.responder(profiles[case.role], case.query)
-            return result, result.chunk_ids
+            result = baseline.responder(profiles[case.user], case.query)
+            doc_ids = []
+            for chunk_id in result.chunk_ids:
+                doc = repository.get_document(UUID(chunk_id))
+                if doc is not None:
+                    doc_ids.append(doc.doc_id)
+            return result, doc_ids
 
         def run_secure(case):
-            result = secure.agent.respond(contexts[case.role], case.query)
-            decision = secure.pdp.evaluate(contexts[case.role], "search", "documentos")
+            result = secure.agent.respond(contexts[case.user], case.query)
+            decision = secure.pdp.evaluate(contexts[case.user], "search", "documentos")
             metas = secure.retrieval.describe_chunks(
-                contexts[case.role], decision, result.chunk_ids
+                contexts[case.user], decision, result.chunk_ids
             ) if decision.allowed else []
             return result, [meta.doc_id for meta in metas]
 
@@ -74,20 +79,23 @@ def main() -> int:
             or overhead > 0.20
             or not has_role_coverage(cases)
         )
-    except (OSError, ValueError, psycopg.Error) as exc:
+    except (OSError, ValueError, AttributeError, KeyError, psycopg.Error) as exc:
         print(f"No se pudo ejecutar la evaluación: {exc}", file=sys.stderr)
         print("Verifica PostgreSQL, las variables de .env y que el esquema esté aplicado.", file=sys.stderr)
+        return 2
+    except Exception as exc:  # noqa: BLE001
+        print(f"Error inesperado en la evaluación ({type(exc).__name__}): {exc}", file=sys.stderr)
         return 2
 
 
 def _context(profile: UserProfile, policy_version: str | None) -> SecurityContext:
     return SecurityContext(
-        user_id=UUID(profile.user_id),
+        user_id=UUID(profile.id),
         roles=(profile.role, "default-roles-acxes"),
         dept=profile.dept,
         clearance=profile.clearance,
         acl_tags=profile.acl_tags,
-        session_id=f"evaluation-{profile.user_id}",
+        session_id=f"evaluation-{profile.id}",
         policy_version=policy_version,
     )
 

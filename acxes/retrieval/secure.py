@@ -37,10 +37,10 @@ WHERE c.id = ANY(%(chunk_ids)s::uuid[]) AND {predicate_clause("c")}
 """
 _SALARY_SQL = """
 SELECT salary
-FROM users
+FROM payroll_cohort
 WHERE salary IS NOT NULL
-  AND (%(role)s = 'administrador' OR dept = ANY(%(depts)s::text[]))
-  AND (%(dept)s IS NULL OR dept = %(dept)s)
+  AND (%(role)s::text = 'administrador' OR dept = ANY(%(depts)s::text[]))
+  AND (%(dept)s::text IS NULL OR dept = %(dept)s::text)
 """
 
 
@@ -114,14 +114,12 @@ class SecureRetrievalService:
         ctx: SecurityContext,
         decision: Decision,
         dept: str | None = None,
-        period: str | None = None,
     ) -> list[Decimal]:
         """Obtiene salarios dentro del predicado; nunca acepta una cohorte del modelo."""
         predicate = _require_allowed(ctx, decision)
         params = _predicate_params(predicate) | {
             "role": decision.role or "",
             "dept": dept,
-            "period": period,
         }
         rows = self._run(decision, lambda cur: _fetch(cur, _SALARY_SQL, params))
         return [Decimal(str(row[0])) for row in rows]

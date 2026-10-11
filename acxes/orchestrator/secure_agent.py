@@ -69,6 +69,7 @@ class SecureAgent:
         truncado = True
         iteraciones = 0
         decisiones: list[ToolDecision] = []
+        aggregate = False
 
         while iteraciones < self._max_iterations:
             respuesta = self._llm.complete(
@@ -94,6 +95,7 @@ class SecureAgent:
             for llamada in respuesta.tool_calls:
                 llamadas.append(llamada)
                 resultado = self._ejecutar(ctx, llamada)
+                aggregate = aggregate or resultado.aggregate
                 decisiones.append(
                     ToolDecision(llamada.name, resultado.reason, resultado.reason == "ok")
                 )
@@ -115,6 +117,7 @@ class SecureAgent:
             iterations=iteraciones,
             truncated=truncado,
             tool_decisions=tuple(decisiones),
+            aggregate=aggregate,
         )
 
     def _ejecutar(self, ctx: SecurityContext, llamada: ToolCall) -> GatewayResult:

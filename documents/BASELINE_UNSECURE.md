@@ -57,3 +57,9 @@ Cada respuesta imprime cuántos fragmentos recibió el modelo, los tokens consum
 ## Qué NO incluye esta entrega, a propósito
 
 Todo lo que ya está especificado en `../docs/ARQUITECTURA.md` para la arquitectura **Secure** (Keycloak, `SecurityContext`, PDP con reglas RBAC+ABAC, Tool Gateway, guardia de salida, auditoría) sigue sin implementarse. Las carpetas `../acxes/pdp`, `../acxes/tool_gateway`, `../acxes/output_guard`, `../acxes/ingestion` y `../acxes/evaluation` contienen solo `__init__.py` y se completan en las etapas siguientes del plan.
+# Decisión sobre agregados
+
+B1 no expone la herramienta `resumen_nomina` en su catálogo operativo. La línea base conserva
+la recuperación ingenua de documentos y no pretende implementar el control de agregación de S;
+los casos de nómina individual se mantienen para medir la fuga causada por la recuperación sin
+filtro. La herramienta de agregación solo se ofrece al agente seguro.
