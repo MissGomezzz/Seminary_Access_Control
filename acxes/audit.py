@@ -76,6 +76,7 @@ def audit_event(
     tool_calls: int,
     redactions: int,
     invalid_citations: int,
+    tool_decisions: tuple[dict[str, Any], ...] = (),
 ) -> dict[str, Any]:
     """Construye un evento acotado; no incluye JWT, claims ni contenido de chunks."""
     return {
@@ -87,5 +88,9 @@ def audit_event(
         "policy_version": policy_version,
         "chunk_ids": list(chunk_ids),
         "response": response[:10000],
-        "detail": {"redactions": redactions, "invalid_citations": invalid_citations},
+        "detail": {
+            "redactions": redactions,
+            "invalid_citations": invalid_citations,
+            "tool_decisions": list(tool_decisions),
+        },
     }

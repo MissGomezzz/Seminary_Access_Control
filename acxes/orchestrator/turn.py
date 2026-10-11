@@ -10,6 +10,13 @@ TRUNCATED_MESSAGE = "No fue posible completar la consulta."
 
 
 @dataclass(frozen=True)
+class ToolDecision:
+    tool_name: str
+    reason: str
+    allowed: bool
+
+
+@dataclass(frozen=True)
 class TurnResult:
     """Resultado de un turno, común a B1, B2 y S para medir con las mismas métricas.
 
@@ -26,6 +33,7 @@ class TurnResult:
     iterations: int
     # Verdadero si se agotó el tope de iteraciones sin respuesta final
     truncated: bool = False
+    tool_decisions: tuple[ToolDecision, ...] = ()
 
 
 def to_json(data: dict) -> str:

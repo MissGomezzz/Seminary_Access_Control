@@ -18,6 +18,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from acxes.orchestrator.tool_catalog import TOOL_MODELS, BuscarDocumentos, LeerDocumento
+from acxes.output_guard.aggregation import AggregationDenied, aggregate_salary
 from acxes.pdp.model import Decision
 from acxes.retrieval.secure import RetrievalDenied, RetrievalError
 from acxes.retrieval.types import ChunkHit, DocumentRecord
@@ -116,6 +117,27 @@ class ToolGateway:
         return GatewayResult(
             _document_payload(doc), tuple(c.chunk_id for c in doc.chunks), decision
         )
+
+    def aggregate_salary(
+        self, ctx: SecurityContext, values: list[int | float], group_size: int | None = None
+    ) -> dict:
+        """Calcula un agregado solo con el alcance que el PDP autorizó.
+
+        La cohorte ya debe haber sido obtenida mediante este gateway. El administrador
+        puede agregar toda la organización; los demás roles quedan sujetos al umbral.
+        """
+        decision = self._pdp.evaluate(ctx, "search", RESOURCE)
+        if not decision.allowed:
+            return {"error": "cohorte no disponible"}
+        if decision.role == "administrador":
+            if not values:
+                raise AggregationDenied("la cohorte no permite un agregado")
+            return aggregate_salary(values, len(values)) if len(values) >= 3 else {
+                "group_size": len(values),
+                "total": sum(values),
+                "average": sum(values) / len(values),
+            }
+        return aggregate_salary(values, group_size)
 
 
 def _empty(args) -> dict:

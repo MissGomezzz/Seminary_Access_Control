@@ -121,6 +121,14 @@ class ChatService:
                     tool_calls=len(turn.tool_calls),
                     redactions=response["gateway"]["redactions"],
                     invalid_citations=response["gateway"]["invalid_citations"],
+                    tool_decisions=tuple(
+                        {
+                            "tool_name": d.tool_name,
+                            "reason": d.reason,
+                            "allowed": d.allowed,
+                        }
+                        for d in turn.tool_decisions
+                    ),
                 )
             )
         except AuditError as exc:

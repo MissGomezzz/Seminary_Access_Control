@@ -15,7 +15,7 @@ from acxes.orchestrator.history import HistoryKey, InMemoryHistoryStore
 from acxes.orchestrator.llm_client import LLMClient, LLMMessage, ToolCall
 from acxes.orchestrator.prompts import SYSTEM_PROMPT
 from acxes.orchestrator.tool_catalog import tool_specs
-from acxes.orchestrator.turn import TRUNCATED_MESSAGE, TurnResult, to_json
+from acxes.orchestrator.turn import TRUNCATED_MESSAGE, ToolDecision, TurnResult, to_json
 from acxes.security_context import SecurityContext
 from acxes.tool_gateway.gateway import GatewayResult
 
@@ -68,6 +68,7 @@ class SecureAgent:
         texto = TRUNCATED_MESSAGE
         truncado = True
         iteraciones = 0
+        decisiones: list[ToolDecision] = []
 
         while iteraciones < self._max_iterations:
             respuesta = self._llm.complete(SYSTEM_PROMPT, mensajes, tool_specs())
@@ -91,6 +92,9 @@ class SecureAgent:
             for llamada in respuesta.tool_calls:
                 llamadas.append(llamada)
                 resultado = self._ejecutar(ctx, llamada)
+                decisiones.append(
+                    ToolDecision(llamada.name, resultado.reason, resultado.decision is not None and resultado.decision.allowed)
+                )
                 chunk_ids.extend(resultado.chunk_ids)
                 mensajes.append(
                     LLMMessage(
@@ -108,6 +112,7 @@ class SecureAgent:
             latency_s=time.perf_counter() - inicio,
             iterations=iteraciones,
             truncated=truncado,
+            tool_decisions=tuple(decisiones),
         )
 
     def _ejecutar(self, ctx: SecurityContext, llamada: ToolCall) -> GatewayResult:
