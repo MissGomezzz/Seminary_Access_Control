@@ -30,12 +30,14 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from acxes.audit import PostgresAuditLogger
 from acxes.config import Settings, get_settings
 from acxes.edge_api import demo_engine
 from acxes.edge_api.errors import AccessDenied, BackendUnavailable, InvalidIdentity
@@ -91,7 +93,10 @@ def create_app(
 
                 stack = build_secure_stack(settings)
                 names = demo_engine.display_name if mode == "dev" else None
-                lazy["service"] = ChatService(stack.agent, stack.pdp, stack.retrieval, names)
+                audit = PostgresAuditLogger(settings) if mode != "demo" else None
+                lazy["service"] = ChatService(
+                    stack.agent, stack.pdp, stack.retrieval, names, audit
+                )
             return lazy["service"]
 
     def get_validator() -> KeycloakTokenValidator:
@@ -223,7 +228,7 @@ def create_app(
             raise HTTPException(429, MSG_RATE)
         if mode == "demo":
             return demo_engine.answer(claims, body.message)
-        return get_service().chat(claims, body.message)
+        return get_service().chat(claims, body.message, uuid4())
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:

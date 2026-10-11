@@ -11,6 +11,7 @@ from collections.abc import Sequence
 
 from acxes.orchestrator.llm_client import ToolCall
 from acxes.orchestrator.turn import TurnResult
+from acxes.output_guard import guard_text
 from acxes.pdp.model import Decision
 from acxes.retrieval.types import ChunkMeta
 
@@ -83,8 +84,9 @@ def turn_status(turn: TurnResult, decision: Decision) -> str:
 
 
 def present_turn(turn: TurnResult, decision: Decision, sources: Sequence[ChunkMeta]) -> dict:
+    guarded = guard_text(turn.text, turn.chunk_ids)
     return {
-        "answer": clean_text(turn.text),
+        "answer": guarded.text,
         "status": turn_status(turn, decision),
         "citations": group_sources(sources),
         "gateway": {
@@ -94,8 +96,9 @@ def present_turn(turn: TurnResult, decision: Decision, sources: Sequence[ChunkMe
             "predicate": predicate_view(decision),
             "tool_calls": [{"name": _short(c.name), "args": _safe_args(c)} for c in turn.tool_calls],
             "chunks": len(turn.chunk_ids),
-            # La guardia de salida es la etapa 5. Hasta que exista no se afirma que se aplicó
-            "output_guard": "pending",
+            "output_guard": "applied",
+            "redactions": guarded.redactions,
+            "invalid_citations": guarded.invalid_citations,
             "iterations": turn.iterations,
             "prompt_tokens": turn.prompt_tokens,
             "completion_tokens": turn.completion_tokens,

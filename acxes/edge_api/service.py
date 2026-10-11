@@ -15,7 +15,9 @@ porque la base esté caída. Sigue siendo fail-closed, porque no se entrega nada
 
 import logging
 from collections.abc import Callable
+from uuid import UUID, uuid4
 
+from acxes.audit import AuditError, AuditLogger, NullAuditLogger, audit_event
 from acxes.edge_api.errors import AccessDenied, BackendUnavailable, InvalidIdentity
 from acxes.edge_api.presenter import predicate_view, present_turn
 from acxes.orchestrator.llm_client import LLMInfrastructureError
@@ -37,12 +39,14 @@ class ChatService:
         pdp,
         retrieval,
         display_name: Callable[[str], str | None] | None = None,
+        audit: AuditLogger | None = None,
     ) -> None:
         self._agent = agent
         self._pdp = pdp
         self._retrieval = retrieval
         # El token no lleva nombre (sin PII). Solo el modo dev lo conoce, por sus usuarios de prueba
         self._display_name = display_name or (lambda _user_id: None)
+        self._audit = audit or NullAuditLogger()
 
     @property
     def policy_version(self) -> str | None:
@@ -84,7 +88,7 @@ class ChatService:
             "policy_version": decision.policy_version,
         }
 
-    def chat(self, claims: dict, message: str) -> dict:
+    def chat(self, claims: dict, message: str, trace_id: UUID | None = None) -> dict:
         ctx = self.security_context(claims)
         try:
             turn = self._agent.respond(ctx, message)
@@ -98,4 +102,27 @@ class ChatService:
                 sources = self._retrieval.describe_chunks(ctx, decision, turn.chunk_ids)
             except (RetrievalDenied, RetrievalError):
                 log.warning("edge: no se pudieron describir las fuentes del turno")
-        return present_turn(turn, decision, sources)
+        response = present_turn(turn, decision, sources)
+        try:
+            self._audit.record(
+                audit_event(
+                    trace_id or uuid4(),
+                    ctx.user_id,
+                    message,
+                    {
+                        "decision": decision.decision,
+                        "reason": decision.reason,
+                        "role": decision.role,
+                        "claims_drift": list(decision.claims_drift),
+                    },
+                    decision.policy_version,
+                    turn.chunk_ids,
+                    response["answer"],
+                    tool_calls=len(turn.tool_calls),
+                    redactions=response["gateway"]["redactions"],
+                    invalid_citations=response["gateway"]["invalid_citations"],
+                )
+            )
+        except AuditError as exc:
+            raise BackendUnavailable("audit") from exc
+        return response
