@@ -26,6 +26,8 @@ Pruebas: `tests/unit/test_jwt_validator.py`, `tests/integration/test_edge_api_se
 
 ## Pendiente
 
-- Guardia de salida (etapa 5): el front muestra `output_guard: pending` y no afirma que se aplicó.
+- Guardia de salida: el flujo Secure devuelve `output_guard: applied` después de limpiar marcas,
+  validar citas y redactar PII. El modo demo puede conservar `pending` porque no ejecuta el stack
+  Secure.
 - Keycloak: renombrar `keycloak/acxes-realm.json.draft` a `acxes-realm.json` para que `docker compose` lo importe, y verificar el login con una cuenta real (no se probó con un Keycloak real).
 - Los tokens viven en `sessionStorage`. Para producción lo correcto es un BFF con cookie HttpOnly.

@@ -94,7 +94,7 @@ Errores que el front maneja: `401` (renueva el token una vez y, si falla, vuelve
     "predicate": { "allowed_depts": ["institucional","financiera"], "max_sensitivity": "confidencial",
                    "owner_id": "…", "acl_tags": ["auditoria_interna"] },     // null si se rechazó la identidad
     "tool_calls": [ { "name": "buscar_documentos", "args": {"keywords": ["…"]}, "result": "ok", "chunks": 3 } ],
-    "output_guard": "passed",               // "passed" | "redacted" | "blocked"
+    "output_guard": "applied",              // Secure: "applied"; demo legado: "pending"
     "iterations": 1, "prompt_tokens": 0, "completion_tokens": 0, "latency_s": 0.02
   }
 }
@@ -137,7 +137,7 @@ Marcado en el código como `TODO(etapa N)`. El front no cambia.
 | `acxes/pdp/` con la regla de `POLITICAS_ACCESO.md` | `build_predicate` e `is_visible` en `demo_engine.py` | 3 |
 | `acxes/tool_gateway/` + retrieval con RLS | la búsqueda del demo | 3–4 |
 | Orquestador S con `LLMClient` (Groq) | la plantilla de respuesta del demo | 4 |
-| `acxes/output_guard/` | el campo `output_guard` (hoy siempre `passed`) | 5 |
+| `acxes/output_guard/` | limpieza de salida, citas y redacción PII | 5 |
 | Rate limit real y auditoría | `rate_limited` | 5 |
 
 `tests/unit/test_demo_engine.py` fija la regla de visibilidad (P1 a P8 y P12) sobre el corpus

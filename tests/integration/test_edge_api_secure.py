@@ -55,7 +55,9 @@ def test_chat_responde_con_el_contrato_del_front(client):
     body = r.json()
     assert body["gateway"]["engine"] == "secure"
     assert body["gateway"]["decision"] == "allow"
-    assert body["gateway"]["output_guard"] == "pending"  # la etapa 5 aún no existe
+    assert body["gateway"]["output_guard"] == "applied"
+    assert body["gateway"]["redactions"] >= 0
+    assert body["gateway"]["invalid_citations"] >= 0
     assert {"answer", "status", "citations", "gateway"} <= body.keys()
     for c in body["citations"]:
         assert {"doc_id", "title", "dept", "sensitivity", "acl_tags", "chunk_ids"} <= c.keys()
