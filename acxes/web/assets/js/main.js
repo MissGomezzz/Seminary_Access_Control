@@ -113,7 +113,15 @@ async function submit() {
   const turn = { q: text };
   try {
     turn.result = await api.sendChat(text, conv.id);
+    // [DEV-AUDIT] temporal: estado real del turno frente a cómo lo pinta ui.botMessage
+    console.debug("[DEV-AUDIT] chat", {
+      status: turn.result.status,
+      citations: turn.result.citations?.length ?? 0,
+      pintado_como_denegado: !turn.result.citations?.length,
+      gateway: turn.result.gateway,
+    });
   } catch (e) {
+    console.debug("[DEV-AUDIT] chat error", e.status, e.message); // [DEV-AUDIT] temporal
     if (e.status === 401) { setBusy(false); return; } // session-expired ya redirige
     turn.error = e.status === 429 ? "Demasiadas solicitudes. Espera un momento e inténtalo de nuevo."
       : e.status === 0 ? e.message : "No pude procesar tu consulta. Inténtalo de nuevo.";

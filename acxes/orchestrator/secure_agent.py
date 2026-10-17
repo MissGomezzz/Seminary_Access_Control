@@ -11,6 +11,7 @@ presupuesto de tokens por turno) para que la comparación cambie solo la autoriz
 import time
 from typing import Protocol
 
+from acxes.dev_audit import dev_audit, preview
 from acxes.orchestrator.history import HistoryKey, InMemoryHistoryStore
 from acxes.orchestrator.llm_client import LLMClient, LLMMessage, ToolCall
 from acxes.orchestrator.prompts import SYSTEM_PROMPT
@@ -48,6 +49,7 @@ class SecureAgent:
         fingerprint = self._gateway.authorization_fingerprint(ctx)
         if fingerprint is None:
             # Sin autorización vigente no se llama al modelo
+            dev_audit("agent: huella None (PDP denegó) -> DENIAL_MESSAGE sin llamar al modelo")
             return TurnResult(
                 text=DENIAL_MESSAGE,
                 tool_calls=(),
@@ -60,6 +62,11 @@ class SecureAgent:
         key = HistoryKey(ctx.user_id, ctx.session_id, ctx.policy_version, fingerprint)
         # Los mensajes del turno viven aquí. Al historial solo pasa el cierre del turno
         mensajes = self._history.load(key)
+        dev_audit(
+            "agent: turno nuevo session=%s historial=%d mensajes previos=%s",
+            ctx.session_id, len(mensajes),
+            [preview(m.content, 60) for m in mensajes if m.role == "assistant"],
+        )
         mensajes.append(LLMMessage(role="user", content=message))
 
         llamadas: list[ToolCall] = []
@@ -78,6 +85,12 @@ class SecureAgent:
             iteraciones += 1
             prompt_tokens += respuesta.usage.prompt_tokens
             completion_tokens += respuesta.usage.completion_tokens
+            dev_audit(
+                "agent: iter=%d tokens acumulados=%d/%d tool_calls=%s texto=%r",
+                iteraciones, prompt_tokens + completion_tokens, self._max_turn_tokens,
+                [(c.name, c.arguments, c.error) for c in respuesta.tool_calls],
+                preview(respuesta.text),
+            )
 
             if not respuesta.tool_calls:
                 texto = respuesta.text
@@ -85,6 +98,7 @@ class SecureAgent:
                 break
             # P13: presupuesto de tokens del turno, igual que en B1
             if prompt_tokens + completion_tokens >= self._max_turn_tokens:
+                dev_audit("agent: CORTE por presupuesto de tokens -> TRUNCATED_MESSAGE")
                 break
 
             mensajes.append(
@@ -96,6 +110,11 @@ class SecureAgent:
                 llamadas.append(llamada)
                 resultado = self._ejecutar(ctx, llamada)
                 aggregate = aggregate or resultado.aggregate
+                dev_audit(
+                    "agent: herramienta %s -> reason=%s chunks=%d payload_keys=%s",
+                    llamada.name, resultado.reason, len(resultado.chunk_ids),
+                    sorted(resultado.payload),
+                )
                 decisiones.append(
                     ToolDecision(llamada.name, resultado.reason, resultado.reason == "ok")
                 )
@@ -106,6 +125,12 @@ class SecureAgent:
                     )
                 )
 
+        if truncado:
+            dev_audit("agent: turno TRUNCADO tras %d iteraciones", iteraciones)
+        dev_audit(
+            "agent: fin del turno chunks=%d aggregate=%s texto=%r",
+            len(dict.fromkeys(chunk_ids)), aggregate, preview(texto),
+        )
         self._history.append_turn(key, message, texto)
         return TurnResult(
             text=texto,

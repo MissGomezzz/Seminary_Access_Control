@@ -17,6 +17,7 @@ from uuid import UUID
 import psycopg
 
 from acxes.config import Settings, postgres_dsn
+from acxes.dev_audit import dev_audit
 from acxes.pdp.model import Decision, Predicate
 from acxes.retrieval.lexical import SECURE_SEARCH_CHUNKS_SQL, keywords_to_or_query, predicate_clause
 from acxes.retrieval.types import ChunkHit, ChunkMeta, DocumentRecord
@@ -68,7 +69,12 @@ class SecureRetrievalService:
     ) -> list[ChunkHit]:
         predicate = _require_allowed(ctx, decision)
         params = _predicate_params(predicate) | {"q": keywords_to_or_query(keywords), "k": self._k}
+        dev_audit(
+            "retrieval: search q=%r depts=%s max=%s tags=%s k=%s",
+            params["q"], params["depts"], params["max_sensitivity"], params["acl_tags"], self._k,
+        )
         rows = self._run(decision, lambda cur: _fetch(cur, SECURE_SEARCH_CHUNKS_SQL, params))
+        dev_audit("retrieval: search filas=%d", len(rows))
         return [ChunkHit(str(cid), str(did), title, content) for cid, did, title, content in rows]
 
     def read_document(
@@ -104,6 +110,7 @@ class SecureRetrievalService:
             return []
         params = _predicate_params(predicate) | {"chunk_ids": list(chunk_ids)}
         rows = self._run(decision, lambda cur: _fetch(cur, _DESCRIBE_SQL, params))
+        dev_audit("retrieval: describe_chunks pedidos=%d encontrados=%d", len(chunk_ids), len(rows))
         found = {
             str(cid): ChunkMeta(str(cid), str(did), title, dept, sens, tuple(tags))
             for cid, did, title, dept, sens, tags in rows
@@ -132,6 +139,7 @@ class SecureRetrievalService:
                     cur.execute("SELECT set_config(%s, %s, true)", (name, value))
                 return query(cur)
         except psycopg.Error as exc:
+            dev_audit("retrieval: error de base %s: %s", type(exc).__name__, exc)
             raise RetrievalError("error de recuperación") from exc
 
 
@@ -141,6 +149,10 @@ def _require_allowed(ctx: SecurityContext, decision: Decision) -> Predicate:
     assert decision.predicate is not None
     # La decisión debe corresponder a este contexto
     if decision.predicate.owner_id != ctx.user_id or decision.policy_version != ctx.policy_version:
+        dev_audit(
+            "retrieval: decisión no corresponde al contexto (owner=%s user=%s pv=%s/%s)",
+            decision.predicate.owner_id, ctx.user_id, decision.policy_version, ctx.policy_version,
+        )
         raise RetrievalDenied("la decisión no corresponde al contexto")
     return decision.predicate
 

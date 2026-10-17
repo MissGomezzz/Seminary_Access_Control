@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from uuid import UUID, uuid4
 
+from acxes.dev_audit import dev_audit, preview
 from acxes.audit import AuditError, AuditLogger, NullAuditLogger, audit_event
 from acxes.edge_api.errors import AccessDenied, BackendUnavailable, InvalidIdentity
 from acxes.edge_api.presenter import predicate_view, present_turn
@@ -92,21 +93,35 @@ class ChatService:
 
     def chat(self, claims: dict, message: str, trace_id: UUID | None = None) -> dict:
         ctx = self.security_context(claims)
+        dev_audit(
+            "edge: chat user=%s claims roles=%s dept=%s clearance=%s policy=%s msg=%r",
+            ctx.user_id, ctx.roles, ctx.dept, ctx.clearance, ctx.policy_version, preview(message),
+        )
         try:
             turn = self._agent.respond(ctx, message)
         except LLMInfrastructureError as exc:
+            dev_audit("edge: LLMInfrastructureError %s", exc)
             log.error("edge: falló el proveedor del modelo (%s)", exc.status_code)
             raise BackendUnavailable("llm") from exc
         decision = self._authorize(ctx)
         if not decision.allowed:
+            dev_audit("edge: autorización final DENEGADA (%s) -> DENIAL_MESSAGE", decision.reason)
             turn = replace(turn, text=DENIAL_MESSAGE, chunk_ids=())
         sources = []
         if decision.allowed and turn.chunk_ids:
             try:
                 sources = self._retrieval.describe_chunks(ctx, decision, turn.chunk_ids)
-            except (RetrievalDenied, RetrievalError):
+            except (RetrievalDenied, RetrievalError) as exc:
+                dev_audit("edge: describe_chunks falló %s (%r)", exc, exc.__cause__)
                 log.warning("edge: no se pudieron describir las fuentes del turno")
         response = present_turn(turn, decision, sources)
+        dev_audit(
+            "edge: respuesta status=%s fuentes=%d chunks=%d redactions=%d citas_inválidas=%d "
+            "texto_modelo=%d chars -> texto_final=%d chars",
+            response["status"], len(response["citations"]), len(turn.chunk_ids),
+            response["gateway"]["redactions"], response["gateway"]["invalid_citations"],
+            len(turn.text), len(response["answer"]),
+        )
         try:
             self._audit.record(
                 audit_event(
