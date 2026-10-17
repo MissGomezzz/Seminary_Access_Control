@@ -35,12 +35,13 @@ FROM chunks c
 JOIN documents d ON d.id = c.doc_id
 WHERE c.id = ANY(%(chunk_ids)s::uuid[]) AND {predicate_clause("c")}
 """
-_SALARY_SQL = """
-SELECT salary
-FROM payroll_cohort
-WHERE salary IS NOT NULL
-  AND (%(role)s::text = 'administrador' OR dept = ANY(%(depts)s::text[]))
-  AND (%(dept)s::text IS NULL OR dept = %(dept)s::text)
+# Solo los salarios de las nóminas que el usuario podría leer: mismo predicado que la búsqueda
+# y RLS sobre payroll como segunda red. El filtro opcional es la dependencia del empleado
+_SALARY_SQL = f"""
+SELECT p.salary
+FROM payroll p
+WHERE {predicate_clause("p")}
+  AND (%(dept)s::text IS NULL OR p.employee_dept = %(dept)s::text)
 """
 
 
@@ -115,12 +116,10 @@ class SecureRetrievalService:
         decision: Decision,
         dept: str | None = None,
     ) -> list[Decimal]:
-        """Obtiene salarios dentro del predicado; nunca acepta una cohorte del modelo."""
+        """Salarios de las nóminas visibles para el usuario. La cohorte la fija el predicado y
+        nunca el modelo. `dept` solo puede acotarla, nunca ampliarla."""
         predicate = _require_allowed(ctx, decision)
-        params = _predicate_params(predicate) | {
-            "role": decision.role or "",
-            "dept": dept,
-        }
+        params = _predicate_params(predicate) | {"dept": dept}
         rows = self._run(decision, lambda cur: _fetch(cur, _SALARY_SQL, params))
         return [Decimal(str(row[0])) for row in rows]
 

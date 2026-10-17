@@ -33,9 +33,15 @@ ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents FORCE ROW LEVEL SECURITY;
 ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chunks FORCE ROW LEVEL SECURITY;
+ALTER TABLE payroll ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payroll FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY documents_access_policy ON documents FOR SELECT
     USING (app_row_visible(dept, sensitivity, owner_id, acl_tags));
 
 CREATE POLICY chunks_access_policy ON chunks FOR SELECT
+    USING (app_row_visible(dept, sensitivity, owner_id, acl_tags));
+
+-- resumen_nomina solo suma los salarios que el usuario podría leer en su nómina
+CREATE POLICY payroll_access_policy ON payroll FOR SELECT
     USING (app_row_visible(dept, sensitivity, owner_id, acl_tags));

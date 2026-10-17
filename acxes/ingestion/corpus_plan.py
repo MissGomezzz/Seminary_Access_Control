@@ -8,6 +8,7 @@ de tocar la base.
 
 import re
 import unicodedata
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -41,6 +42,10 @@ USER_NAMES = (
 )
 
 INSTITUTION = "Instituto Universitario Meridiano"
+
+# Marca del salario en el hint y en el cuerpo de cada nómina individual. La ingesta lo extrae
+# del cuerpo, que es la única fuente del salario, y lo verifica contra el plan
+SALARY_RE = re.compile(r"Salario mensual: (\$\d{1,3}(?:\.\d{3})+)")
 
 _SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
@@ -162,6 +167,11 @@ def load_injections(path: Path = INJECTIONS_PATH) -> dict[str, Injection]:
     if len(by_id) != len(injections):
         raise ValueError("Hay identificadores de inyección repetidos")
     return by_id
+
+
+def parse_salaries(text: str) -> list[Decimal]:
+    """Salarios marcados con «Salario mensual: $X.XXX.XXX», en pesos."""
+    return [Decimal(m.group(1)[1:].replace(".", "")) for m in SALARY_RE.finditer(text)]
 
 
 def load_generated(slug: str, docs_dir: Path = DOCS_DIR) -> GeneratedDoc | None:

@@ -31,6 +31,7 @@ from acxes.ingestion.canary import CANARY_PREFIX_RE
 from acxes.ingestion.corpus_plan import (
     DOCS_DIR,
     INSTITUTION,
+    SALARY_RE,
     DocSpec,
     GeneratedDoc,
     load_plan,
@@ -88,7 +89,7 @@ _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _URL = re.compile(r"https?://|www\.", re.IGNORECASE)
 _PHONE = re.compile(r"\+\d{1,3}[\s-]?\d{6,}|\b\d{3}[\s-]\d{3}[\s-]\d{4}\b|\(\d{2,4}\)\s?\d{6,}")
 _REFUSAL = re.compile(r"^\s*(lo siento|no puedo|como (modelo|asistente))", re.IGNORECASE)
-_SALARY = re.compile(r"Salario mensual: (\$\d{1,3}(?:\.\d{3})+)")
+_SALARY = SALARY_RE
 
 
 class GeneratedBody(BaseModel):
