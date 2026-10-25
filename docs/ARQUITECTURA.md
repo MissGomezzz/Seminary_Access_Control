@@ -529,6 +529,15 @@ acxes/
 
 ## 11. Consideraciones abiertas
 
+### Control de inferencia en agregados
+
+Los agregados de nómina se calculan únicamente con `resumen_nomina`. Para empleados y
+supervisores el alcance no puede variar mediante `dept`: el gateway usa siempre el conjunto
+completo de dependencias autorizado por el PDP y exige una cohorte mínima de tres personas.
+Esta defensa evita que dos consultas válidas con alcances diferentes se resten para aislar el
+salario de una persona. El administrador sí puede filtrar por dependencia porque su permiso
+abarca toda la organización.
+
 - **Reranking**: descartado en esta implementación.
 - **Degradación cuando el PDP no responde**: debe ser *fail-closed* (denegar) por defecto — definir el mensaje que recibe el usuario en ese escenario sin filtrar información de diagnóstico.
 - **Índice único con filtros vs. índices separados por nivel de clasificación**: un único índice con filtro de metadatos es más simple de mantener; índices separados por `sensitivity` reducen el radio de impacto de un bug en el filtro pero multiplican la complejidad operativa. Resuelto: se usa un único índice con filtro.

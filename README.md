@@ -8,7 +8,7 @@ Este repositorio recoge el seminario de Fundamentos de Seguridad de la Informaci
 
 - Sofía Nicolle Ariza Goenaga
 - María Belén Quintero Aldana 
-- Ángela Gómez Valencia 
+- Ángela Sofía Gómez Valencia 
 
 ## índice 
 
@@ -28,7 +28,7 @@ Este repositorio recoge el seminario de Fundamentos de Seguridad de la Informaci
 El seminario avanza en dos capas que conviven en el mismo repositorio:
 
 1. **Arquitectura Unsecure (B1)** — **implementada** sobre el esquema compartido de la etapa 1 y con Groq como modelo real. Es la línea base ingenua: el modelo decide qué recuperar y qué mostrar, la única protección son las instrucciones del prompt, la recuperación no filtra y la conexión a la base ignora RLS. Existe a propósito, para medir y documentar la falla antes de corregirla. Ver [BASELINE UNSECURE](/documents/BASELINE_UNSECURE.md).
-2. **Arquitectura Secure (S)** — **en construcción**. La etapa 1 (base de datos) ya tiene esquema, roles de base de datos, trigger, RLS con FORCE y un corpus provisional, con sus pruebas. El PDP, el Tool Gateway, la API de borde, la guardia de salida y la auditoría siguen pendientes. El diseño completo está en [ARQUITECTURA](/docs/ARQUITECTURA.md) y el avance por etapa en [PLAN DE IMPLEMENTACIÓN](/docs/PLAN_IMPLEMENTACION.md).
+2. **Arquitectura Secure (S)** — implementada para desarrollo. Incluye esquema, roles de base de datos, RLS con FORCE, PDP, Tool Gateway, API de borde, guardia determinista de salida y auditoría de solo inserción. El modo `keycloak` exige secretos y tokens RS256; el modo `dev` conserva sesiones de prueba para CI.
 
 El código de `acxes/*_unsecure.py`, `acxes/retrieval/unsecure_tool.py` y `acxes/db/repository.py` es intencionalmente inseguro y solo existe para la comparación B1 vs. S descrita en [UMBRALES EVALUACIÓN](/docs/UMBRALES_EVALUACION.md). No debe importarse desde S.
 
@@ -60,7 +60,7 @@ acxes/
 ├── web/                      # front: login con Keycloak (OIDC + PKCE) y chat. IMPLEMENTADO (front)
 ├── tool_gateway/    # PEP interno de la arquitectura Secure. PENDIENTE
 ├── pdp/             # motor RBAC+ABAC de la arquitectura Secure. PENDIENTE
-├── output_guard/    # citación obligatoria, redacción PII (Secure). PENDIENTE
+├── output_guard/    # limpieza de marcas, citas y redacción PII (Secure)
 ├── ingestion/       # pipeline de ingesta y corpus generado (Secure). PENDIENTE
 └── evaluation/      # métricas B1 vs B2 vs S. PENDIENTE
 

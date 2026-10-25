@@ -24,6 +24,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from acxes.dev_audit import dev_audit
 from acxes.pdp.model import Decision, Predicate, Sensitivity
 from acxes.pdp.subject_store import SubjectRecord, SubjectStore
 from acxes.security_context import SecurityContext
@@ -69,7 +70,7 @@ class PolicyDecisionPoint:
         subjects: SubjectStore,
         policy_path: Path = ACTIVE_POLICY,
         clock: Callable[[], float] = time.monotonic,
-        timeout_s: float = 0.5,
+        timeout_s: float = 1.0,
     ) -> None:
         self._subjects = subjects
         self._clock = clock
@@ -86,10 +87,21 @@ class PolicyDecisionPoint:
         started = self._clock()
         try:
             decision = self._evaluate(ctx, action, resource)
-        except Exception:  # noqa: BLE001  cualquier fallo deniega (P14)
+        except Exception as exc:  # noqa: BLE001  cualquier fallo deniega (P14)
+            dev_audit("pdp: excepción %s: %s", type(exc).__name__, exc)
             return self._deny("error")
-        if self._clock() - started > self._timeout_s:
+        elapsed = self._clock() - started
+        if elapsed > self._timeout_s:
+            dev_audit(
+                "pdp: TIMEOUT action=%s %.3fs > %.3fs (decisión original=%s/%s)",
+                action, elapsed, self._timeout_s, decision.decision, decision.reason,
+            )
             return self._deny("timeout")
+        dev_audit(
+            "pdp: action=%s user=%s -> %s reason=%s role=%s dept=%s %.3fs",
+            action, ctx.user_id, decision.decision, decision.reason, decision.role,
+            decision.dept, elapsed,
+        )
         return decision
 
     def _evaluate(self, ctx: SecurityContext, action: str, resource: str) -> Decision:
@@ -100,8 +112,10 @@ class PolicyDecisionPoint:
             return self._deny("policy_version")
         try:
             subject = self._subjects.lookup(ctx.user_id)
-        except Exception:  # noqa: BLE001  un fallo del almacén deniega (P14)
+        except Exception as exc:  # noqa: BLE001  un fallo del almacén deniega (P14)
+            dev_audit("pdp: fallo del almacén %s: %s", type(exc).__name__, exc)
             return self._deny("subject_error")
+        dev_audit("pdp: sujeto en la base=%s", subject)
         if subject is None:
             return self._deny("unknown_user")
         # P8: exactamente un rol reconocido en la base
@@ -168,7 +182,8 @@ def _load(path: Path) -> _Policy | None:
     """Carga y valida la política. Ante cualquier fallo devuelve None y el PDP deniega todo."""
     try:
         policy = _Policy.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
-    except Exception:  # noqa: BLE001  una política ilegible deja al PDP denegando todo
+    except Exception as exc:  # noqa: BLE001  una política ilegible deja al PDP denegando todo
+        dev_audit("pdp: no se pudo cargar la política %s: %s", path.name, exc)
         return None
     # El nombre del archivo es la versión, para que no se active una política por error
     return policy if path.stem == policy.version else None

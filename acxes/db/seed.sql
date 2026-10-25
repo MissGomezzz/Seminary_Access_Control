@@ -3,7 +3,7 @@
 -- en data/corpus (python -m acxes.ingestion.load, que `apply` invoca al final).
 -- Ejecutar después de schema.sql, grants.sql y rls.sql. El propietario no está sujeto a RLS.
 
-TRUNCATE audit_log, chunks, documents, role_permissions, permissions, resources,
+TRUNCATE audit_log, payroll, chunks, documents, role_permissions, permissions, resources,
          user_roles, roles, users, policy_version RESTART IDENTITY CASCADE;
 
 INSERT INTO policy_version (version, description) VALUES
@@ -18,7 +18,8 @@ INSERT INTO permissions (resource_id, action)
 INSERT INTO role_permissions (role_id, permission_id)
     SELECT ro.id, p.id FROM roles ro, permissions p;
 
--- Usuarios de prueba. El nivel sale del rol (P7) y las etiquetas siguen a P6
+-- Usuarios de prueba. El nivel sale del rol (P7) y las etiquetas siguen a P6. Los salarios no
+-- están aquí: viven solo en las nóminas del corpus y la ingesta los lleva a payroll, bajo RLS
 INSERT INTO users (id, full_name, dept, clearance, acl_tags) VALUES
     ('00000000-0000-4000-a000-000000000001', 'Sofía Ariza',     'financiera',    'interno',      '{}'),
     ('00000000-0000-4000-a000-000000000002', 'Belén Quintero',  'financiera',    'interno',      '{}'),

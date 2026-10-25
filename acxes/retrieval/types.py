@@ -20,3 +20,15 @@ class DocumentRecord:
     doc_id: str
     title: str
     chunks: tuple[ChunkHit, ...]
+
+
+@dataclass(frozen=True)
+class ChunkMeta:
+    """Metadatos de un fragmento para mostrar sus fuentes al usuario. Sin contenido."""
+
+    chunk_id: str
+    doc_id: str
+    title: str
+    dept: str
+    sensitivity: str
+    acl_tags: tuple[str, ...]

@@ -4,6 +4,7 @@
 -- Es seguro volver a correrlo: elimina y recrea las tablas.
 
 DROP TABLE IF EXISTS audit_log CASCADE;
+DROP TABLE IF EXISTS payroll CASCADE;
 DROP TABLE IF EXISTS chunks CASCADE;
 DROP TABLE IF EXISTS documents CASCADE;
 DROP TABLE IF EXISTS role_permissions CASCADE;
@@ -13,8 +14,12 @@ DROP TABLE IF EXISTS user_roles CASCADE;
 DROP TABLE IF EXISTS roles CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS policy_version CASCADE;
+-- Vista retirada: leía salarios de users sin RLS. Se elimina en bases ya aplicadas
+DROP VIEW IF EXISTS payroll_cohort CASCADE;
 DROP FUNCTION IF EXISTS chunks_inherit_from_document() CASCADE;
 DROP FUNCTION IF EXISTS documents_propagate_to_chunks() CASCADE;
+DROP FUNCTION IF EXISTS inherit_classification_from_document() CASCADE;
+DROP FUNCTION IF EXISTS documents_propagate_classification() CASCADE;
 DROP FUNCTION IF EXISTS pdp_subject(UUID) CASCADE;
 -- Al eliminar el tipo se elimina también app_row_visible, que depende de él (rls.sql)
 DROP TYPE IF EXISTS sensitivity_level CASCADE;
@@ -101,6 +106,24 @@ CREATE TABLE chunks (
 CREATE INDEX chunks_tsv_idx ON chunks USING GIN (content_tsv);
 CREATE INDEX chunks_doc_idx ON chunks (doc_id);
 
+-- Salario de cada nómina individual, para resumen_nomina. Es un índice del documento, como
+-- chunks: la ingesta lo extrae del cuerpo de la nómina, hereda su clasificación por trigger y
+-- lo protege la misma política RLS (rls.sql). Ningún salario vive fuera de esta tabla y del
+-- documento. employee_dept es la dependencia del dueño y solo sirve al filtro del administrador
+CREATE TABLE payroll (
+    doc_id         UUID PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    employee_dept  TEXT NOT NULL CHECK (employee_dept IN ('institucional', 'academica', 'financiera')),
+    salary         NUMERIC(14, 2) NOT NULL CHECK (salary > 0),
+    dept           TEXT NOT NULL,
+    sensitivity    sensitivity_level NOT NULL,
+    owner_id       UUID NOT NULL,
+    acl_tags       TEXT[] NOT NULL DEFAULT '{}',
+    -- Un salario individual nunca queda por debajo de confidencial
+    CONSTRAINT payroll_at_least_confidential CHECK (sensitivity >= 'confidencial'),
+    CONSTRAINT payroll_acl_tags_only_restricted
+        CHECK (sensitivity = 'restringido' OR acl_tags = '{}')
+);
+
 -- Registro de solo inserción para el rol de aplicación (ver grants.sql)
 CREATE TABLE audit_log (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -116,9 +139,10 @@ CREATE TABLE audit_log (
     detail          JSONB
 );
 
--- Al insertar un fragmento se copian los metadatos del documento, no se recalculan.
--- La ingesta corre con el rol propietario, que no está sujeto a RLS en el entorno local.
-CREATE FUNCTION chunks_inherit_from_document() RETURNS trigger
+-- Al insertar un fragmento o un salario se copian los metadatos del documento, no se
+-- recalculan. La ingesta corre con el rol propietario, que no está sujeto a RLS en el entorno
+-- local.
+CREATE FUNCTION inherit_classification_from_document() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
     SELECT d.dept, d.sensitivity, d.owner_id, d.acl_tags
@@ -126,7 +150,7 @@ BEGIN
       FROM documents d
      WHERE d.id = NEW.doc_id;
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'documento inexistente para el fragmento';
+        RAISE EXCEPTION 'documento inexistente para %', TG_TABLE_NAME;
     END IF;
     RETURN NEW;
 END;
@@ -134,13 +158,24 @@ $$;
 
 CREATE TRIGGER chunks_inherit_before_insert
     BEFORE INSERT ON chunks
-    FOR EACH ROW EXECUTE FUNCTION chunks_inherit_from_document();
+    FOR EACH ROW EXECUTE FUNCTION inherit_classification_from_document();
 
--- Un cambio de clasificación del documento llega a sus fragmentos en la misma transacción
-CREATE FUNCTION documents_propagate_to_chunks() RETURNS trigger
+CREATE TRIGGER payroll_inherit_before_insert
+    BEFORE INSERT ON payroll
+    FOR EACH ROW EXECUTE FUNCTION inherit_classification_from_document();
+
+-- Un cambio de clasificación del documento llega a sus fragmentos y a su salario en la misma
+-- transacción. Si deja una nómina por debajo de confidencial, el CHECK de payroll lo rechaza
+CREATE FUNCTION documents_propagate_classification() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
     UPDATE chunks
+       SET dept = NEW.dept,
+           sensitivity = NEW.sensitivity,
+           owner_id = NEW.owner_id,
+           acl_tags = NEW.acl_tags
+     WHERE doc_id = NEW.id;
+    UPDATE payroll
        SET dept = NEW.dept,
            sensitivity = NEW.sensitivity,
            owner_id = NEW.owner_id,
@@ -152,4 +187,4 @@ $$;
 
 CREATE TRIGGER documents_propagate_after_update
     AFTER UPDATE OF dept, sensitivity, owner_id, acl_tags ON documents
-    FOR EACH ROW EXECUTE FUNCTION documents_propagate_to_chunks();
+    FOR EACH ROW EXECUTE FUNCTION documents_propagate_classification();

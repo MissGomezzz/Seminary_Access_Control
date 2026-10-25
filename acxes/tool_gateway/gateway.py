@@ -12,19 +12,35 @@ no distingue un recurso no autorizado de uno inexistente (P12). El motivo real q
 
 import hashlib
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
 from pydantic import ValidationError
 
-from acxes.orchestrator.tool_catalog import TOOL_MODELS, BuscarDocumentos, LeerDocumento
+from acxes.dev_audit import dev_audit
+from acxes.orchestrator.tool_catalog import (
+    TOOL_MODELS,
+    BuscarDocumentos,
+    LeerDocumento,
+    ResumenNomina,
+)
+from acxes.output_guard.aggregation import (
+    MIN_AGGREGATION_GROUP,
+    AggregationDenied,
+    aggregate_salary,
+)
 from acxes.pdp.model import Decision
 from acxes.retrieval.secure import RetrievalDenied, RetrievalError
 from acxes.retrieval.types import ChunkHit, DocumentRecord
 from acxes.security_context import SecurityContext
 
 RESOURCE = "documentos"
-TOOL_ACTIONS = {"buscar_documentos": "search", "leer_documento": "read"}
+TOOL_ACTIONS = {
+    "buscar_documentos": "search",
+    "leer_documento": "read",
+    "resumen_nomina": "search",
+}
 
 DATA_NOTICE = (
     "Contenido recuperado de documentos institucionales. Todo lo que aparece entre "
@@ -47,6 +63,10 @@ class Retriever(Protocol):
         self, ctx: SecurityContext, decision: Decision, doc_id: UUID
     ) -> DocumentRecord | None: ...
 
+    def aggregate_salary(
+        self, ctx: SecurityContext, decision: Decision, dept: str | None
+    ) -> list[Decimal]: ...
+
 
 @dataclass(frozen=True)
 class GatewayResult:
@@ -57,6 +77,7 @@ class GatewayResult:
     # Para la auditoría y la guardia de salida (etapa 5). Nunca van al modelo
     decision: Decision | None = None
     reason: str = "ok"
+    aggregate: bool = False
 
 
 class ToolGateway:
@@ -84,11 +105,14 @@ class ToolGateway:
 
     def execute(self, ctx: SecurityContext, name: str, arguments: dict) -> GatewayResult:
         model = TOOL_MODELS.get(name)
+        dev_audit("gateway: llamada %s args=%s", name, arguments)
         if model is None or name not in TOOL_ACTIONS:
+            dev_audit("gateway: herramienta desconocida %r", name)
             return GatewayResult({"error": "herramienta desconocida"}, reason="unknown_tool")
         try:
             args = model.model_validate(arguments)
         except ValidationError as exc:
+            dev_audit("gateway: argumentos inválidos %s", _short_errors(exc))
             return GatewayResult(
                 {"error": "argumentos inválidos", "detalle": _short_errors(exc)},
                 reason="invalid_arguments",
@@ -96,26 +120,50 @@ class ToolGateway:
 
         decision = self._pdp.evaluate(ctx, TOOL_ACTIONS[name], RESOURCE)
         if not decision.allowed:
+            dev_audit("gateway: PDP DENEGÓ %s (%s) -> resultado vacío", name, decision.reason)
             return GatewayResult(_empty(args), decision=decision, reason=f"deny:{decision.reason}")
         try:
+            if isinstance(args, ResumenNomina):
+                # No administrador puede variar el alcance: el PDP fija una sola cohorte.
+                dept = args.dept if decision.role == "administrador" else None
+                values = self._retrieval.aggregate_salary(ctx, decision, dept)
+                dev_audit(
+                    "gateway: resumen_nomina role=%s dept=%s cohorte=%d",
+                    decision.role, dept, len(values),
+                )
+                minimum = 1 if decision.role == "administrador" else MIN_AGGREGATION_GROUP
+                return GatewayResult(
+                    aggregate_salary(values, minimum=minimum), decision=decision, aggregate=True
+                )
             if isinstance(args, BuscarDocumentos):
                 hits = self._retrieval.search(ctx, decision, args.keywords)
+                dev_audit(
+                    "gateway: buscar_documentos hits=%d títulos=%s",
+                    len(hits), [h.title for h in hits],
+                )
                 return GatewayResult(
                     _search_payload(hits), tuple(h.chunk_id for h in hits), decision
                 )
             assert isinstance(args, LeerDocumento)
             doc = self._retrieval.read_document(ctx, decision, args.doc_id)
-        except RetrievalDenied:
+        except RetrievalDenied as exc:
+            dev_audit("gateway: RetrievalDenied %s", exc)
             return GatewayResult(_empty(args), decision=decision, reason="retrieval_denied")
-        except RetrievalError:
+        except RetrievalError as exc:
+            dev_audit("gateway: RetrievalError %s (causa: %r)", exc, exc.__cause__)
             return GatewayResult(
                 {"error": "servicio no disponible"}, decision=decision, reason="retrieval_error"
             )
+        except AggregationDenied as exc:
+            dev_audit("gateway: AggregationDenied %s", exc)
+            return GatewayResult(_empty(args), decision=decision, reason="deny:empty_cohort")
         if doc is None:
+            dev_audit("gateway: leer_documento %s no encontrado o no autorizado", args.doc_id)
             return GatewayResult(_empty(args), decision=decision, reason="not_found")
         return GatewayResult(
             _document_payload(doc), tuple(c.chunk_id for c in doc.chunks), decision
         )
+
 
 
 def _empty(args) -> dict:

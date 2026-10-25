@@ -1,7 +1,7 @@
 from typing import Literal
 
 from psycopg.conninfo import make_conninfo
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DbRole = Literal["owner", "app", "audit", "pdp"]
@@ -42,6 +42,42 @@ class Settings(BaseSettings):
     postgres_app_password: SecretStr = SecretStr("")
     postgres_audit_password: SecretStr = SecretStr("")
     postgres_pdp_password: SecretStr = SecretStr("")
+
+    # API de borde y front (acxes/edge_api/app.py)
+    #   demo:     sin Docker. Motor de prueba que no es la arquitectura Secure
+    #   dev:      agente S real (PDP, gateway, RLS) con sesiones de prueba, sin Keycloak
+    #   keycloak: agente S real y tokens RS256 de Keycloak
+    acxes_mode: Literal["demo", "dev", "keycloak"] = "demo"
+    keycloak_admin: str = "admin"
+    keycloak_admin_password: SecretStr = SecretStr("")
+    keycloak_public_url: str = "http://localhost:8080"
+    keycloak_realm: str = "acxes"
+    keycloak_web_client_id: str = "acxes-chat-web"
+    keycloak_api_audience: str = "acxes-chat-api"
+    # Si se deja vacío se usa `{emisor}/protocol/openid-connect/certs`
+    keycloak_jwks_url: str = ""
+    # P13: solicitudes de chat por usuario y por minuto
+    rate_limit_per_minute: int = 30
+
+    @model_validator(mode="after")
+    def validate_security_configuration(self) -> "Settings":
+        if self.rate_limit_per_minute < 1:
+            raise ValueError("RATE_LIMIT_PER_MINUTE debe ser positivo")
+        if self.acxes_mode == "keycloak":
+            required = {
+                "POSTGRES_PASSWORD": self.postgres_password,
+                "POSTGRES_APP_PASSWORD": self.postgres_app_password,
+                "POSTGRES_AUDIT_PASSWORD": self.postgres_audit_password,
+                "POSTGRES_PDP_PASSWORD": self.postgres_pdp_password,
+                "KEYCLOAK_ADMIN_PASSWORD": self.keycloak_admin_password,
+            }
+            missing = [name for name, value in required.items() if not value.get_secret_value()]
+            if missing:
+                raise ValueError("Faltan secretos obligatorios: " + ", ".join(missing))
+            local_keycloak = self.keycloak_public_url.startswith("http://localhost")
+            if not self.keycloak_public_url.startswith("https://") and not local_keycloak:
+                raise ValueError("KEYCLOAK_PUBLIC_URL debe usar HTTPS fuera de desarrollo")
+        return self
 
 
 def get_settings() -> Settings:

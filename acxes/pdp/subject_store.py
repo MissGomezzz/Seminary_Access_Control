@@ -35,7 +35,7 @@ class PostgresSubjectStore:
     def __init__(
         self,
         settings: Settings,
-        timeout_ms: int = 500,
+        timeout_ms: int = 1000,
         connect: Callable[..., psycopg.Connection] = psycopg.connect,
     ) -> None:
         self._dsn = postgres_dsn(settings, role="pdp")

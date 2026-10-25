@@ -46,7 +46,7 @@ El predicado que entrega el PDP contiene `allowed_depts`, `max_sensitivity`, `ow
 
 | Id | Política |
 |---|---|
-| P14 | Se deniega con mensaje genérico ante error del PDP, tiempo agotado (500 ms), política ausente, `policy_version` no coincidente, variable de sesión ausente y rol o dependencia inválidos. El detalle va solo a la auditoría |
+| P14 | Se deniega con mensaje genérico ante error del PDP, tiempo agotado (1 s), política ausente, `policy_version` no coincidente, variable de sesión ausente y rol o dependencia inválidos. El detalle va solo a la auditoría |
 | P15 | La versión de política tiene formato `AAAA-MM-DD.n`. El historial y la caché usan la clave `(user_id, session_id, policy_version)` y se invalidan cuando la versión cambia |
 
 ### Auditoría y salida
