@@ -10,6 +10,8 @@ Este repositorio recoge el seminario de Fundamentos de Seguridad de la Informaci
 - María Belén Quintero Aldana 
 - Ángela Sofía Gómez Valencia 
 
+Octubre + Noviembre 2026 
+
 ## índice 
 
 1. [Estado actual del proyecto](#estado-actual-del-proyecto)
