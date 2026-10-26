@@ -27,6 +27,38 @@ function renderDemoUsers() {
       ui.h("span", {}, ui.h("b", {}, u.full_name), ui.h("small", {}, `${u.role} · ${u.dept}`)))));
 }
 
+const SSO_LABEL = "Continuar con Keycloak";
+
+/** Deja el botón de Keycloak usable solo si la API lo acepta y explica por qué si no. */
+function setupSsoButton() {
+  const btn = $("btn-sso");
+  const note = $("sso-note");
+  const label = btn.querySelector("[data-label]");
+
+  if (!auth.ssoEnabled()) {
+    btn.disabled = true;
+    note.textContent = state.cfg.demo
+      ? `El inicio con Keycloak no está activo (modo ${state.cfg.mode}). Usa un usuario de prueba o arranca ACXES con ACXES_MODE=keycloak.`
+      : "El inicio con Keycloak no está disponible.";
+    note.hidden = false;
+    return;
+  }
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    label.textContent = "Conectando con Keycloak…";
+    note.hidden = true;
+    try {
+      await auth.startSso(); // si todo sale bien, la página navega a Keycloak
+    } catch (e) {
+      btn.disabled = false;
+      label.textContent = SSO_LABEL;
+      note.textContent = e instanceof auth.SsoError ? e.message : "No se pudo iniciar el login con Keycloak.";
+      note.hidden = false;
+    }
+  });
+}
+
 async function loginDemo(userId) {
   try {
     await auth.demoLogin(userId);
@@ -160,7 +192,7 @@ async function boot() {
   auth.init(state.cfg);
   renderDemoUsers();
 
-  $("btn-sso").addEventListener("click", () => auth.startSso());
+  setupSsoButton();
   $("btn-new").addEventListener("click", newConversation);
   $("btn-logout").addEventListener("click", logout);
   $("btn-scope").addEventListener("click", () => {

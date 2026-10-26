@@ -29,5 +29,23 @@ Pruebas: `tests/unit/test_jwt_validator.py`, `tests/integration/test_edge_api_se
 - Guardia de salida: el flujo Secure devuelve `output_guard: applied` después de limpiar marcas,
   validar citas y redactar PII. El modo demo puede conservar `pending` porque no ejecuta el stack
   Secure.
-- Keycloak: renombrar `keycloak/acxes-realm.json.draft` a `acxes-realm.json` para que `docker compose` lo importe, y verificar el login con una cuenta real (no se probó con un Keycloak real).
 - Los tokens viven en `sessionStorage`. Para producción lo correcto es un BFF con cookie HttpOnly.
+
+## Probar el botón de Keycloak
+
+Con `ACXES_MODE=keycloak` en `.env` (y `KEYCLOAK_ADMIN_PASSWORD` definido):
+
+```
+docker compose up -d --wait postgres keycloak
+python -m acxes.db.apply
+uvicorn acxes.edge_api.app:app --port 8000
+```
+
+Abrir <http://localhost:8000>, pulsar **Continuar con Keycloak** e iniciar sesión con un usuario del
+realm (`sofia.ariza`, `belen.quintero`, `angela.gomez`, `laura.martinez`, `carlos.renteria` o
+`diego.fajardo`, clave `acxes123`, solo para desarrollo). Debe volver a ACXES con el nombre, el rol y
+las etiquetas del usuario. Comprobación de aislamiento: preguntar "acta del comité disciplinario" y
+ver que solo `carlos.renteria` recibe fuentes `RESTRINGIDO`.
+
+El `realm` trae contraseñas conocidas: es solo para desarrollo. En un despliegue real se crea el
+realm sin credenciales y se usa HTTPS.

@@ -97,6 +97,8 @@ button, textarea { font: inherit; color: inherit; }
 .demo-user:hover { border-color: var(--garnet); background: var(--garnet-50); transform: translateY(-1px); }
 .demo-user b { display: block; font-size: .85rem; line-height: 1.2; }
 .demo-user small { color: var(--ink-3); font-size: .72rem; text-transform: capitalize; }
+.sso-note { margin: .8rem 0 0; padding: .6rem .8rem; border-radius: 10px; font-size: .82rem; line-height: 1.4; color: var(--ink-2); background: var(--surface-2, rgba(0,0,0,.04)); border: 1px solid var(--line, rgba(0,0,0,.08)); }
+.btn[disabled] { opacity: .55; cursor: not-allowed; }
 .fine { color: var(--ink-3); font-size: .78rem; margin: 1.3rem 0 0; }
 .avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 700; font-size: .8rem; color: #fff; background: linear-gradient(135deg, var(--garnet), var(--garnet-900)); }
 .avatar--lg { width: 40px; height: 40px; font-size: .95rem; }

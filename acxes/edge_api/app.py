@@ -186,6 +186,8 @@ def create_app(
         return {
             "mode": mode,
             "demo": mode != "keycloak",
+            # El botón de Keycloak solo sirve si la API valida tokens de Keycloak
+            "sso": mode == "keycloak",
             "keycloak": {
                 "url": settings.keycloak_public_url,
                 "realm": settings.keycloak_realm,

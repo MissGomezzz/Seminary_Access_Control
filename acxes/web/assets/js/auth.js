@@ -71,7 +71,49 @@ export function claims() {
 }
 
 // ---------------------------------------------------------------- SSO (PKCE)
+export class SsoError extends Error {}
+
+const PROBE_TIMEOUT_MS = 4000;
+
+/** El inicio de sesión con Keycloak solo sirve si la API valida tokens de Keycloak. */
+export const ssoEnabled = () => Boolean(cfg && cfg.sso);
+
+/**
+ * Comprueba que Keycloak responde y que el realm existe ANTES de salir de la página. Sin esto,
+ * si Keycloak está apagado o el realm no se importó, el navegador cae en una página de error
+ * ajena a ACXES y la persona no sabe qué pasó.
+ */
+async function probeKeycloak() {
+  const base = `${cfg.keycloak.url}/realms/${cfg.keycloak.realm}`;
+  const url = `${base}/.well-known/openid-configuration`;
+  const down = new SsoError(`No se pudo conectar con Keycloak en ${cfg.keycloak.url}. ¿Está encendido? (docker compose up -d keycloak)`);
+  const noRealm = new SsoError(`Keycloak no tiene el realm "${cfg.keycloak.realm}". Importa keycloak/acxes-realm.json y reinicia Keycloak.`);
+
+  const attempt = async (opts) => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), PROBE_TIMEOUT_MS);
+    try { return await fetch(url, { ...opts, signal: ctl.signal }); } finally { clearTimeout(timer); }
+  };
+
+  let res;
+  try {
+    res = await attempt({});
+  } catch {
+    // Keycloak no envía cabeceras CORS en un 404, así que el navegador lo ve igual que una caída.
+    // Un segundo sondeo sin CORS distingue "responde pero sin realm" de "no responde".
+    try { await attempt({ mode: "no-cors" }); } catch { throw down; }
+    throw noRealm;
+  }
+  if (res.status === 404) throw noRealm;
+  if (!res.ok) throw new SsoError(`Keycloak respondió con un error (${res.status}). Inténtalo de nuevo.`);
+}
+
 export async function startSso() {
+  if (!ssoEnabled()) {
+    throw new SsoError("El inicio de sesión con Keycloak no está activo en este modo de ACXES.");
+  }
+  await probeKeycloak();
+
   const verifier = randomString(64);
   const state = randomString(24);
   const nonce = randomString(24);
