@@ -30,7 +30,7 @@ Formato `ACXES-CNRY-XXXXXXXX`, con ocho caracteres de un alfabeto sin símbolos 
 
 ## Fragmentación
 
-Fragmentos de 500 a 800 tokens con solape de entre el 10 y el 15 por ciento, cortados por oraciones. Los tokens se estiman como palabras por 1,4, sin tokenizador. Un documento corto queda en un solo fragmento. Los fragmentos se cargan sin vector.
+Fragmentos de 500 a 800 tokens con solape de entre el 10 y el 15 por ciento, cortados por oraciones. Los tokens se estiman como palabras por 1,4, sin tokenizador. Un documento corto queda en un solo fragmento. En modo léxico los fragmentos se cargan sin vector. Con `RETRIEVAL_MODE=hybrid` la ingesta guarda además el embedding de cada fragmento (ver abajo).
 
 ## Generación del corpus
 
@@ -52,6 +52,15 @@ Si es necesario regenerar documentos específicos, se pueden eliminar archivos y
 python -m acxes.db.apply            # esquema, roles, RLS, datos base y corpus
 python -m acxes.ingestion.load      # solo el corpus
 ```
+
+Para la búsqueda híbrida (léxica + vectorial con RRF), instale el modelo local y vuelva a ingerir. La primera vez descarga `BAAI/bge-m3` (unos 2,3 GB):
+
+```
+pip install -e ".[dev,embeddings]"
+RETRIEVAL_MODE=hybrid python -m acxes.db.apply   # o RETRIEVAL_MODE=hybrid en .env
+```
+
+El vector se calcula sobre el título del documento seguido del texto final del fragmento, con su carga de inyección y su canario, y vive en la misma fila, con la misma clasificación y la misma política RLS. Cambiar `RETRIEVAL_MODE` o `EMBEDDING_MODEL` exige volver a ingerir. `EMBEDDING_BACKEND=hash` ingiere con un embedder determinista de prueba, sin modelo: es lo que usa CI.
 
 Los identificadores de documento y de fragmento se derivan del slug, así que son estables entre ingestas y las pruebas y el catálogo de ataques pueden referirlos. `apply` valida que el corpus esté completo antes de recrear el esquema.
 

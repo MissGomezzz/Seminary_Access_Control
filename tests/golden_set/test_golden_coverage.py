@@ -2,8 +2,9 @@
 
 Falla si el golden set pide algo no autorizado o si la recuperación devuelve un documento no
 autorizado. La cobertura (al menos un esperado entre los k primeros) se reporta sin umbral,
-porque el plan pide medirla y muchos cuerpos del corpus son cortos. Para verla:
-`pytest tests/golden_set -s`.
+porque el plan pide medirla y muchos cuerpos del corpus son cortos. Se mide en modo léxico e
+híbrido, junto con el MRR (inverso de la posición del primer esperado), para comparar ambos
+modos con las mismas preguntas. Para verla: `pytest tests/golden_set -s`.
 """
 
 from pathlib import Path
@@ -16,7 +17,7 @@ from acxes.config import get_settings
 from acxes.ingestion.corpus_plan import doc_uuid, load_plan
 from acxes.orchestrator.tool_catalog import BuscarDocumentos
 from acxes.retrieval.secure import SecureRetrievalService
-from tests.rls.contexts import database_pdp, security_context
+from tests.rls.contexts import database_pdp, hybrid_settings, security_context
 from tests.rls.oracle import PERSONAS, expected_slugs
 
 GOLDEN_PATH = Path(__file__).with_name("golden.yaml")
@@ -64,12 +65,18 @@ def test_unas_diez_preguntas_por_rol():
 
 
 @pytest.mark.db
-def test_cobertura_y_ausencia_de_fugas(specs):
+@pytest.mark.parametrize("modo", ["lexical", "hybrid"])
+def test_cobertura_y_ausencia_de_fugas(specs, modo):
     pdp = database_pdp()
-    service = SecureRetrievalService(get_settings())
+    if modo == "hybrid":
+        settings = hybrid_settings()
+    else:
+        settings = get_settings().model_copy(update={"retrieval_mode": "lexical"})
+    service = SecureRetrievalService(settings)
     slug_by_id = {str(doc_uuid(s.slug)): s.slug for s in specs}
 
     aciertos: dict[str, list[bool]] = {}
+    rangos_inversos: list[float] = []
     fallos = []
     for q in GOLDEN:
         ctx = security_context(q.persona, pdp)
@@ -79,10 +86,14 @@ def test_cobertura_y_ausencia_de_fugas(specs):
         assert set(slugs) <= expected_slugs(PERSONAS[q.persona], specs), q.question
         acierto = bool(set(slugs) & set(q.expected))
         aciertos.setdefault(PERSONAS[q.persona].role, []).append(acierto)
+        posicion = next((i for i, s in enumerate(slugs, 1) if s in q.expected), None)
+        rangos_inversos.append(1 / posicion if posicion else 0.0)
         if not acierto:
             fallos.append(f"  {q.persona}: {q.question} -> {slugs}")
 
-    print("\nCobertura del golden set (al menos un esperado en los k primeros):")
+    mrr = sum(rangos_inversos) / len(rangos_inversos)
+    print(f"\n[{modo}] MRR@{settings.retrieval_k}: {mrr:.3f}")
+    print(f"[{modo}] Cobertura del golden set (al menos un esperado en los k primeros):")
     for role, valores in aciertos.items():
         print(f"  {role}: {sum(valores)}/{len(valores)}")
     if fallos:

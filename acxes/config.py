@@ -32,6 +32,24 @@ class Settings(BaseSettings):
     # Presupuesto de tokens por turno, sumando entrada y salida de todas las iteraciones
     agent_max_turn_tokens: int = 16000
 
+    # Recuperación: léxica (versión base) o híbrida, léxica + vectorial exacta fusionadas con
+    # Reciprocal Rank Fusion (acxes/retrieval/lexical.py). La ingesta calcula los vectores
+    # solo en modo híbrido. Cambiar de modelo exige volver a ingerir el corpus
+    retrieval_mode: Literal["lexical", "hybrid"] = "lexical"
+    # local: sentence-transformers en el mismo proceso. hash: solo para pruebas y CI
+    embedding_backend: Literal["local", "hash"] = "local"
+    embedding_model: str = "BAAI/bge-m3"
+    # Debe coincidir con la columna chunks.embedding (acxes/db/vector.sql)
+    embedding_dim: int = 1024
+    # Candidatos por rama antes de fusionar, y constante k de RRF
+    retrieval_candidates: int = 20
+    rrf_k: int = 60
+    # Similitud coseno mínima de la rama vectorial. Sin él, una consulta sin sentido recibe los
+    # vecinos más cercanos en vez de "sin resultados". 0.48 está calibrado para bge-m3 sobre
+    # este corpus: consultas de ruido llegan a 0.44 y el esperado del golden set nunca baja de
+    # 0.53. Se recalibra si cambia el modelo
+    embedding_min_similarity: float | None = 0.48
+
     # Base de datos. Solo la capa de recuperación de S debe usar el rol de aplicación.
     # B1 usa el propietario a propósito, como credencial amplia
     postgres_host: str = "127.0.0.1"
@@ -63,6 +81,10 @@ class Settings(BaseSettings):
     def validate_security_configuration(self) -> "Settings":
         if self.rate_limit_per_minute < 1:
             raise ValueError("RATE_LIMIT_PER_MINUTE debe ser positivo")
+        if self.retrieval_candidates < self.retrieval_k:
+            raise ValueError("RETRIEVAL_CANDIDATES no puede ser menor que RETRIEVAL_K")
+        if self.embedding_dim < 1 or self.rrf_k < 1:
+            raise ValueError("EMBEDDING_DIM y RRF_K deben ser positivos")
         if self.acxes_mode == "keycloak":
             required = {
                 "POSTGRES_PASSWORD": self.postgres_password,

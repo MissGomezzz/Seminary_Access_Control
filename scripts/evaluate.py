@@ -7,6 +7,7 @@ que no esté levantada.
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -28,7 +29,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Compara B1 y S con el mismo conjunto de casos.")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--out", type=Path, default=Path("evaluation-results.json"))
+    parser.add_argument(
+        "--retrieval-mode",
+        choices=("lexical", "hybrid"),
+        help="Modo de recuperación para B1 y S. Por defecto, el de .env (RETRIEVAL_MODE)",
+    )
     args = parser.parse_args()
+    if args.retrieval_mode:
+        # B1 y S leen la configuración del entorno, así que ambos usan el mismo modo
+        os.environ["RETRIEVAL_MODE"] = args.retrieval_mode
     cases = default_cases()
     if not has_role_coverage(cases):
         print("Error: faltan roles en el conjunto de evaluación.", file=sys.stderr)
@@ -70,6 +79,7 @@ def main() -> int:
             "secure": asdict(secure_metrics),
             "latency_overhead": overhead,
             "role_coverage": sorted({case.role for case in cases}),
+            "retrieval_mode": settings.retrieval_mode,
         }
         args.out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(payload, ensure_ascii=False, indent=2))

@@ -6,8 +6,11 @@ nunca parámetros de identidad sueltos. En cada transacción fija las variables 
 docs/VARIABLES_SESION.md a partir del predicado y además aplica el mismo predicado en el
 `WHERE`, de modo que el filtro va antes de la recuperación y RLS queda como segunda red.
 
-Si la decisión no es de acceso, no abre conexión. Un documento inexistente y uno no
-autorizado producen el mismo resultado (P12).
+Si la decisión no es de acceso, no abre conexión ni calcula el vector de la consulta. Un
+documento inexistente y uno no autorizado producen el mismo resultado (P12).
+
+En modo híbrido el vector de la consulta se calcula aquí, en el proceso del servicio, con el
+modelo local. Nunca sale del servicio: no va al gateway, al modelo de lenguaje ni a la auditoría.
 """
 
 from collections.abc import Callable, Sequence
@@ -19,7 +22,14 @@ import psycopg
 from acxes.config import Settings, postgres_dsn
 from acxes.dev_audit import dev_audit
 from acxes.pdp.model import Decision, Predicate
-from acxes.retrieval.lexical import SECURE_SEARCH_CHUNKS_SQL, keywords_to_or_query, predicate_clause
+from acxes.retrieval.embedding import Embedder, build_embedder, to_pgvector
+from acxes.retrieval.lexical import (
+    SECURE_HYBRID_SEARCH_CHUNKS_SQL,
+    SECURE_SEARCH_CHUNKS_SQL,
+    keywords_to_or_query,
+    keywords_to_text,
+    predicate_clause,
+)
 from acxes.retrieval.types import ChunkHit, ChunkMeta, DocumentRecord
 from acxes.security_context import SecurityContext
 
@@ -59,21 +69,35 @@ class SecureRetrievalService:
         self,
         settings: Settings,
         connect: Callable[[str], psycopg.Connection] = psycopg.connect,
+        embedder: Embedder | None = None,
     ) -> None:
         self._dsn = postgres_dsn(settings, role="app")
         self._k = settings.retrieval_k
         self._connect = connect
+        self._hybrid = settings.retrieval_mode == "hybrid"
+        self._embedder = (embedder or build_embedder(settings)) if self._hybrid else None
+        self._hybrid_params = {
+            "n": settings.retrieval_candidates,
+            "rrf_k": settings.rrf_k,
+            "min_sim": settings.embedding_min_similarity,
+        }
 
     def search(
         self, ctx: SecurityContext, decision: Decision, keywords: list[str]
     ) -> list[ChunkHit]:
         predicate = _require_allowed(ctx, decision)
         params = _predicate_params(predicate) | {"q": keywords_to_or_query(keywords), "k": self._k}
+        sql = SECURE_SEARCH_CHUNKS_SQL
+        if self._hybrid:
+            # Después de la autorización y antes de abrir la conexión
+            params |= self._hybrid_params | {"qv": self._query_vector(keywords)}
+            sql = SECURE_HYBRID_SEARCH_CHUNKS_SQL
         dev_audit(
-            "retrieval: search q=%r depts=%s max=%s tags=%s k=%s",
+            "retrieval: search modo=%s q=%r depts=%s max=%s tags=%s k=%s",
+            "hybrid" if self._hybrid else "lexical",
             params["q"], params["depts"], params["max_sensitivity"], params["acl_tags"], self._k,
         )
-        rows = self._run(decision, lambda cur: _fetch(cur, SECURE_SEARCH_CHUNKS_SQL, params))
+        rows = self._run(decision, lambda cur: _fetch(cur, sql, params))
         dev_audit("retrieval: search filas=%d", len(rows))
         return [ChunkHit(str(cid), str(did), title, content) for cid, did, title, content in rows]
 
@@ -129,6 +153,16 @@ class SecureRetrievalService:
         params = _predicate_params(predicate) | {"dept": dept}
         rows = self._run(decision, lambda cur: _fetch(cur, _SALARY_SQL, params))
         return [Decimal(str(row[0])) for row in rows]
+
+    def _query_vector(self, keywords: list[str]) -> str:
+        """Vector de la consulta como literal de pgvector. Un fallo del modelo es un error de
+        recuperación genérico: no se vuelve en silencio a la búsqueda léxica."""
+        assert self._embedder is not None
+        try:
+            return to_pgvector(self._embedder.embed_query(keywords_to_text(keywords)))
+        except Exception as exc:  # noqa: BLE001 - el detalle no sale del servicio
+            dev_audit("retrieval: error del modelo de embeddings %s: %s", type(exc).__name__, exc)
+            raise RetrievalError("error de recuperación") from exc
 
     def _run(self, decision: Decision, query):
         variables = _session_variables(decision)

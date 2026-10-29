@@ -12,7 +12,7 @@
 > - La política RLS se alinea con las reglas del PDP, incluidos `owner_id` y `acl_tags`, y se prueba su equivalencia.
 > - Descartados: MFA, back-channel logout, alertas, reranking, OPA, índices separados, `role_hierarchy` y el permiso `summarize`.
 > - Simplificados: sin token exchange (solo el servicio de recuperación se conecta a la base, con un rol de mínimo privilegio), client secret en lugar de `private_key_jwt`, reindexado por trigger, auditoría en tabla de solo inserción y dos herramientas (`buscar_documentos` y `leer_documento`).
-> - Recuperación léxica con `websearch_to_tsquery` y `ts_rank_cd`. La búsqueda vectorial es una etapa opcional y la columna de vector no existe en la versión base.
+> - Recuperación léxica con `websearch_to_tsquery` y `ts_rank_cd`. La búsqueda vectorial es una etapa opcional, implementada y activable con `RETRIEVAL_MODE=hybrid`: búsqueda exacta con pgvector, sin HNSW, fusionada por RRF. El modelo es `BAAI/bge-m3` y corre en el mismo proceso (ver 6.2).
 > - El historial vive en el servidor con clave por usuario, sesión y versión de política.
 > - El modelo de lenguaje se accede por la interfaz `LLMClient`, independiente del proveedor. El proveedor elegido es Groq y el CI usa un cliente simulado.
 > - Se mide utilidad además de fuga, con tokens canario y un conjunto de ataques retenido.
@@ -361,7 +361,7 @@ Vive en el **Tool Gateway**, que es el único componente autorizado a invocar el
 1. Normalización del documento origen (extracción de texto, metadatos: `dept`, `sensitivity`, `owner_id`, `acl_tags`, fecha).
 2. *Chunking* con solapamiento (p. ej. 500–800 tokens, 10–15% de solape) preservando referencia al documento origen.
 3. Cada chunk **hereda** los metadatos de clasificación del documento — nunca se recalculan de forma independiente.
-4. Escritura en la tabla de chunks, sin vector. Los embeddings son una etapa opcional que añade la columna por migración.
+4. Escritura en la tabla de chunks. La columna `embedding` la añade la migración `acxes/db/vector.sql`. En modo híbrido la ingesta calcula el vector de cada fragmento sobre el título del documento seguido del texto final del fragmento, con la carga de inyección y el canario, y lo guarda en la misma fila, así que hereda la clasificación y la política RLS del fragmento.
 5. **Propagación por trigger**: un cambio de clasificación en el documento origen actualiza sus chunks dentro de la misma transacción.
 
 ```sql
@@ -374,7 +374,7 @@ CREATE TABLE chunks (
     acl_tags TEXT[] DEFAULT '{}',
     content TEXT NOT NULL,
     content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('spanish', content)) STORED,
-    -- embedding VECTOR(n): solo con la etapa opcional, mediante migración
+    -- embedding VECTOR(1024): la añade acxes/db/vector.sql (etapa opcional)
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -384,7 +384,8 @@ CREATE INDEX chunks_tsv_idx ON chunks USING GIN (content_tsv);
 ### 6.2 Consulta híbrida
 
 - Versión base: solo búsqueda léxica sobre `content_tsv`. El agente entrega de tres a ocho palabras clave y sinónimos, combinadas con OR mediante `websearch_to_tsquery` y ordenadas con `ts_rank_cd`.
-- Etapa opcional: búsqueda vectorial exacta, sin HNSW, fusionada por *Reciprocal Rank Fusion*.
+- Etapa opcional (`RETRIEVAL_MODE=hybrid`): búsqueda vectorial exacta, sin HNSW, fusionada por *Reciprocal Rank Fusion* (`SECURE_HYBRID_SEARCH_CHUNKS_SQL` en `acxes/retrieval/lexical.py`). Cada rama toma `RETRIEVAL_CANDIDATES` candidatos con el predicado del PDP en su propio `WHERE`, antes de su `LIMIT`, y la fusión devuelve `k` fragmentos, a lo sumo uno por documento. La rama vectorial exige una similitud coseno mínima (`EMBEDDING_MIN_SIMILARITY`, 0.48 calibrado para bge-m3), para que una consulta sin sentido dé "sin resultados" y no los vecinos más cercanos. Sin índice aproximado, porque con un filtro de metadatos puede devolver menos de `k` filas, y con este volumen la búsqueda exacta cuesta milisegundos.
+- Modelo de embeddings: `BAAI/bge-m3` (multilingüe, 1024 dimensiones, contexto de 8192 tokens, así que los fragmentos de 500 a 800 tokens no se truncan). Corre en el mismo proceso que la ingesta y el servicio de recuperación (`acxes/retrieval/embedding.py`): ningún fragmento ni consulta sale del sistema hacia una API externa. El vector de la consulta se calcula después de la decisión del PDP y nunca va al gateway, al modelo de lenguaje ni a la auditoría. La consulta que se convierte en vector son las palabras clave de `buscar_documentos`, así que el esquema de la herramienta no cambia. Alternativa evaluada: `Qwen3-Embedding-0.6B`, que exige un prefijo de instrucción en las consultas. Cambiar de modelo exige volver a ingerir.
 - *Reranking*: descartado.
 - `k` (número de resultados) acotado por configuración, nunca decidido por el modelo.
 - **El filtro de autorización (predicado del PDP) se aplica en el `WHERE` de esta misma consulta**, no después de traer los resultados.

@@ -39,6 +39,11 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check .
+      # Ingesta con vectores del embedder de prueba (sin descargar modelo), para que las pruebas
+      # de búsqueda híbrida tengan datos. Las demás pruebas siguen en modo léxico
       - name: Aplicar esquema, roles, RLS y datos provisionales
         run: python -m acxes.db.apply
+        env:
+          RETRIEVAL_MODE: hybrid
+          EMBEDDING_BACKEND: hash
       - run: pytest
