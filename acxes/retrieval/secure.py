@@ -160,7 +160,7 @@ class SecureRetrievalService:
         assert self._embedder is not None
         try:
             return to_pgvector(self._embedder.embed_query(keywords_to_text(keywords)))
-        except Exception as exc:  # noqa: BLE001 - el detalle no sale del servicio
+        except Exception as exc:
             dev_audit("retrieval: error del modelo de embeddings %s: %s", type(exc).__name__, exc)
             raise RetrievalError("error de recuperación") from exc
 

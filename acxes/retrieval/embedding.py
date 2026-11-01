@@ -52,9 +52,7 @@ class SentenceTransformerEmbedder:
                 ) from exc
             model = SentenceTransformer(self.model_name)
             # Renombrado en versiones recientes de sentence-transformers
-            get_dim = getattr(model, "get_embedding_dimension", None) or getattr(
-                model, "get_sentence_embedding_dimension"
-            )
+            get_dim = getattr(model, "get_embedding_dimension", None) or model.get_sentence_embedding_dimension
             actual = get_dim()
             if actual != self.dim:
                 raise EmbeddingError(
