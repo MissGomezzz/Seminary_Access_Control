@@ -14,17 +14,27 @@ pip install -e ".[dev]"
 uvicorn acxes.edge_api.app:app --reload --port 8000
 ```
 
-Abrir <http://localhost:8000>. Sin más configuración arranca en **modo demo**
-(`ACXES_FRONT_DEMO=1`): no necesita Docker, ni Keycloak, ni Postgres, ni clave de Groq.
-En Windows (cmd) las variables se declaran con `set`, por ejemplo `set ACXES_FRONT_DEMO=0`.
+Abrir <http://localhost:8000>. El modo se elige con `ACXES_MODE` en `.env`; sin él arranca en
+**`demo`**: no necesita Docker, ni Keycloak, ni Postgres, ni clave de Groq. En Windows (cmd) las
+variables sueltas se declaran con `set`, por ejemplo `set ACXES_MODE=dev`.
 
 | Variable | Por defecto | Uso |
 |---|---|---|
-| `ACXES_FRONT_DEMO` | `1` | `1` = motor de demo. `0` = API real (hoy responde 501 en `/api/me` y `/api/chat`). |
+| `ACXES_MODE` | `demo` | `demo` = motor de plantillas. `dev` = agente Secure real con sesiones de prueba. `keycloak` = agente Secure real y login real. |
 | `KEYCLOAK_PUBLIC_URL` | `http://localhost:8080` | URL de Keycloak vista desde el navegador. |
-| `KEYCLOAK_PORT` | `8080` | Solo para armar la URL anterior. |
 | `KEYCLOAK_REALM` | `acxes` | Realm. |
 | `KEYCLOAK_WEB_CLIENT_ID` | `acxes-chat-web` | Client público del front. |
+
+**Botón "Continuar con Keycloak".** Solo está activo con `ACXES_MODE=keycloak`, porque es el único
+modo en que la API valida tokens de Keycloak. En `demo` y `dev` aparece deshabilitado con una nota
+que lo explica, y quedan los usuarios de prueba. Antes de salir hacia Keycloak, el front comprueba
+que responde y que el realm existe; si no, muestra el motivo en la propia pantalla de ACXES:
+
+| Lo que ve la persona | Causa | Qué hacer |
+|---|---|---|
+| "No se pudo conectar con Keycloak en …" | Keycloak apagado o URL equivocada | `docker compose up -d keycloak` |
+| "Keycloak no tiene el realm …" | El realm no se importó | Verificar `keycloak/acxes-realm.json` y reiniciar Keycloak |
+| Botón deshabilitado | `ACXES_MODE` no es `keycloak` | Cambiar el modo en `.env` |
 
 ## Estructura
 
@@ -106,12 +116,11 @@ salen del `TurnResult` de `acxes/orchestrator/turn.py`.
 
 ## Contrato con Keycloak
 
-El borrador `keycloak/acxes-realm.json.draft` define lo que el front espera. Para usarlo,
-renombrarlo a `acxes-realm.json` y reiniciar Keycloak (`docker-compose.yml` ya monta `./keycloak`
-con `--import-realm`).
-
-**No pude probarlo en este entorno (sin Docker).** Si Keycloak falla al importarlo, quitar el
-archivo y crear a mano lo siguiente en la consola de administración:
+`keycloak/acxes-realm.json` define lo que el front espera y `docker-compose.yml` lo importa al
+arrancar (`--import-realm`). Se probó con Keycloak 26.0.8: el recorrido completo (login, token con
+`aud`, `azp`, `sid`, `dept`, `clearance` y `acl_tags`, chat y cierre de sesión) funciona con los seis
+usuarios. Si Keycloak ya tenía el realm de una ejecución anterior, la importación no lo
+sobrescribe: borrar el volumen o el realm desde la consola. Si prefieres crearlo a mano:
 
 | Elemento | Valor |
 |---|---|

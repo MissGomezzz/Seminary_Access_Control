@@ -31,6 +31,18 @@ from acxes.tool_gateway.gateway import RESOURCE
 
 log = logging.getLogger("acxes.edge")
 
+_MAX_NAME = 80
+
+
+def _claim_name(claims: dict) -> str | None:
+    """Nombre para mostrar tomado del token (claim `name` de Keycloak). Es solo presentación:
+    no interviene en ninguna decisión de acceso, por eso se acepta sin más que recortarlo."""
+    name = claims.get("name")
+    if not isinstance(name, str):
+        return None
+    name = " ".join(name.split())[:_MAX_NAME]
+    return name or None
+
 # Motivos de `Decision.reason` que indican una falla del sistema y no una falta de permisos
 INFRA_REASONS = frozenset({"error", "timeout", "no_policy", "policy_version", "subject_error"})
 
@@ -47,7 +59,7 @@ class ChatService:
         self._agent = agent
         self._pdp = pdp
         self._retrieval = retrieval
-        # El token no lleva nombre (sin PII). Solo el modo dev lo conoce, por sus usuarios de prueba
+        # En modo dev el nombre sale de los usuarios de prueba; con Keycloak, del claim `name`
         self._display_name = display_name or (lambda _user_id: None)
         self._audit = audit or NullAuditLogger()
 
@@ -82,7 +94,7 @@ class ChatService:
         view = predicate_view(decision)
         return {
             "user_id": str(ctx.user_id),
-            "full_name": self._display_name(str(ctx.user_id)),
+            "full_name": self._display_name(str(ctx.user_id)) or _claim_name(claims),
             "roles": [decision.role],
             "dept": decision.dept,
             "clearance": view["max_sensitivity"],

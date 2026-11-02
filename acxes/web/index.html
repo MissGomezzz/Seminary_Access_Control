@@ -69,8 +69,9 @@
       <p>Inicia sesión con tu cuenta institucional para hablar con el asistente.</p>
 
       <button id="btn-sso" class="btn btn--primary btn--lg" type="button">
-        <svg class="icon"><use href="#i-key"/></svg> Continuar con Keycloak
+        <svg class="icon"><use href="#i-key"/></svg> <span data-label>Continuar con Keycloak</span>
       </button>
+      <p id="sso-note" class="sso-note" role="status" hidden></p>
       <div class="trust">
         <span class="chip"><svg class="icon"><use href="#i-lock"/></svg> OIDC + PKCE</span>
         <span class="chip">JWT RS256</span>
