@@ -87,7 +87,8 @@ CREATE TABLE documents (
         CHECK (sensitivity = 'restringido' OR acl_tags = '{}')
 );
 
--- Cada fragmento hereda la clasificación del documento. Sin vector en la versión base
+-- Cada fragmento hereda la clasificación del documento. La columna embedding la añade
+-- vector.sql, que se aplica justo después de este archivo
 CREATE TABLE chunks (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     doc_id       UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,

@@ -4,7 +4,11 @@ Uso:
     python -m acxes.ingestion.load
 
 Lee `data/corpus/plan.yaml` y los cuerpos de `data/corpus/docs/`, normaliza, añade las cargas
-de inyección y los canarios, fragmenta y carga sin vector. Se conecta con el rol propietario,
+de inyección y los canarios, fragmenta y carga. En modo híbrido (`RETRIEVAL_MODE=hybrid`)
+calcula además el vector de cada fragmento con el modelo local (`acxes/retrieval/embedding.py`),
+sobre el título del documento seguido del texto final del fragmento, con su carga de inyección
+y su canario (`embedding_text`). El título tiene la misma clasificación que el fragmento y ya
+llega al modelo con cada resultado. Se conecta con el rol propietario,
 que es el que migra el esquema. La dependencia, el nivel, el dueño y las etiquetas de cada
 fragmento los hereda el trigger del documento (`schema.sql`), nunca se pasan desde aquí.
 
@@ -38,6 +42,7 @@ from acxes.ingestion.corpus_plan import (
     load_plan,
     parse_salaries,
 )
+from acxes.retrieval.embedding import Embedder, EmbeddingError, build_embedder, to_pgvector
 
 
 class CorpusError(Exception):
@@ -48,6 +53,7 @@ class CorpusError(Exception):
 class LoadSummary:
     documents: int
     chunks: int
+    embedded: int = 0
 
 
 def compose_chunks(spec: DocSpec, body: str, injections: dict[str, Injection]) -> list[str]:
@@ -115,8 +121,10 @@ def load_corpus(
     specs: list[DocSpec],
     docs_dir: Path = DOCS_DIR,
     injections: dict[str, Injection] | None = None,
+    embedder: Embedder | None = None,
 ) -> LoadSummary:
-    """Reemplaza documentos y fragmentos dentro de la transacción de `conn`."""
+    """Reemplaza documentos y fragmentos dentro de la transacción de `conn`. Con `embedder`
+    guarda también el vector de cada fragmento."""
     injections = load_injections() if injections is None else injections
     _check_files(specs, docs_dir)
 
@@ -126,6 +134,7 @@ def load_corpus(
     }
     documents: list[tuple] = []
     chunks: list[tuple] = []
+    embed_inputs: list[str] = []
     payroll: list[tuple] = []
     for spec in specs:
         generated = load_generated(spec.slug, docs_dir)
@@ -146,9 +155,12 @@ def load_corpus(
         )
         for index, text in enumerate(compose_chunks(spec, generated.body, injections)):
             chunks.append((chunk_uuid(doc_id, index), doc_id, index, text))
+            embed_inputs.append(embedding_text(spec.title, text))
         salary = payroll_salary(spec, generated.body)
         if salary is not None:
             payroll.append((doc_id, users[spec.owner][1], salary))
+
+    vectors = _embed_chunks(embedder, embed_inputs)
 
     with conn.cursor() as cur:
         cur.execute("TRUNCATE payroll, chunks, documents")
@@ -158,23 +170,56 @@ def load_corpus(
             documents,
         )
         # dept, sensitivity, owner_id y acl_tags los completa el trigger desde el documento
-        cur.executemany(
-            "INSERT INTO chunks (id, doc_id, chunk_index, content) VALUES (%s, %s, %s, %s)",
-            chunks,
-        )
+        if vectors is None:
+            cur.executemany(
+                "INSERT INTO chunks (id, doc_id, chunk_index, content) VALUES (%s, %s, %s, %s)",
+                chunks,
+            )
+        else:
+            cur.executemany(
+                "INSERT INTO chunks (id, doc_id, chunk_index, content, embedding) "
+                "VALUES (%s, %s, %s, %s, %s::vector)",
+                [(*row, to_pgvector(v)) for row, v in zip(chunks, vectors, strict=True)],
+            )
         # Igual que en chunks, la clasificación la copia el trigger desde la nómina
         cur.executemany(
             "INSERT INTO payroll (doc_id, employee_dept, salary) VALUES (%s, %s, %s)",
             payroll,
         )
-    return LoadSummary(documents=len(documents), chunks=len(chunks))
+    return LoadSummary(
+        documents=len(documents),
+        chunks=len(chunks),
+        embedded=0 if vectors is None else len(vectors),
+    )
+
+
+def embedding_text(title: str, text: str) -> str:
+    """Texto que se convierte en vector: el título y luego el fragmento. Muchos cuerpos son
+    plantillas casi idénticas y lo que distingue al documento solo está en su título."""
+    return f"{title}\n\n{text}"
+
+
+def _embed_chunks(embedder: Embedder | None, texts: list[str]) -> list[list[float]] | None:
+    """Vectores de los fragmentos, calculados antes de abrir la escritura para no truncar las
+    tablas si el modelo falla."""
+    if embedder is None:
+        return None
+    try:
+        vectors = embedder.embed_documents(texts)
+    except EmbeddingError as exc:
+        raise CorpusError(f"No se pudieron calcular los embeddings: {exc}") from exc
+    if len(vectors) != len(texts) or any(len(v) != embedder.dim for v in vectors):
+        raise CorpusError(
+            f"El modelo no devolvió un vector de {embedder.dim} dimensiones por fragmento"
+        )
+    return vectors
 
 
 def ingest(settings: Settings | None = None, docs_dir: Path = DOCS_DIR) -> LoadSummary:
     settings = settings or get_settings()
     specs = load_plan()
     with psycopg.connect(postgres_dsn(settings)) as conn:
-        return load_corpus(conn, specs, docs_dir)
+        return load_corpus(conn, specs, docs_dir, embedder=build_embedder(settings))
 
 
 if __name__ == "__main__":
@@ -182,4 +227,7 @@ if __name__ == "__main__":
         summary = ingest()
     except CorpusError as exc:
         raise SystemExit(str(exc)) from exc
-    print(f"Corpus ingerido: {summary.documents} documentos y {summary.chunks} fragmentos.")
+    print(
+        f"Corpus ingerido: {summary.documents} documentos y {summary.chunks} fragmentos, "
+        f"{summary.embedded} con embedding."
+    )

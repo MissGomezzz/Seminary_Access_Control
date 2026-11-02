@@ -13,7 +13,13 @@ from uuid import UUID
 import psycopg
 
 from acxes.config import Settings, postgres_dsn
-from acxes.retrieval.lexical import SEARCH_CHUNKS_SQL, keywords_to_or_query
+from acxes.retrieval.embedding import Embedder, build_embedder, to_pgvector
+from acxes.retrieval.lexical import (
+    HYBRID_SEARCH_CHUNKS_SQL,
+    SEARCH_CHUNKS_SQL,
+    keywords_to_or_query,
+    keywords_to_text,
+)
 from acxes.retrieval.types import ChunkHit, DocumentRecord
 
 __all__ = [
@@ -54,8 +60,16 @@ JOIN roles r ON r.id = ur.role_id
 class PostgresInstitutionalRepository:
     """Implementación real, sin ninguna cláusula WHERE de autorización."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, embedder: Embedder | None = None) -> None:
         self._dsn = postgres_dsn(settings, role="owner")
+        # Mismo modo, modelo y parámetros de fusión que S, para que solo cambie la autorización
+        self._hybrid = settings.retrieval_mode == "hybrid"
+        self._embedder = (embedder or build_embedder(settings)) if self._hybrid else None
+        self._hybrid_params = {
+            "n": settings.retrieval_candidates,
+            "rrf_k": settings.rrf_k,
+            "min_sim": settings.embedding_min_similarity,
+        }
 
     def _connect(self) -> psycopg.Connection:
         return psycopg.connect(self._dsn)
@@ -69,8 +83,15 @@ class PostgresInstitutionalRepository:
             ]
 
     def search_chunks(self, keywords: list[str], k: int) -> list[ChunkHit]:
+        params = {"q": keywords_to_or_query(keywords), "k": k}
+        sql = SEARCH_CHUNKS_SQL
+        if self._hybrid:
+            assert self._embedder is not None
+            vector = self._embedder.embed_query(keywords_to_text(keywords))
+            params |= self._hybrid_params | {"qv": to_pgvector(vector)}
+            sql = HYBRID_SEARCH_CHUNKS_SQL
         with self._connect() as conn, conn.cursor() as cur:
-            cur.execute(SEARCH_CHUNKS_SQL, {"q": keywords_to_or_query(keywords), "k": k})
+            cur.execute(sql, params)
             return [
                 ChunkHit(str(cid), str(did), title, content)
                 for cid, did, title, content in cur.fetchall()

@@ -1,4 +1,5 @@
-"""Aplica el esquema compartido, los roles, los privilegios, RLS, el seed y el corpus.
+"""Aplica el esquema compartido, la columna vectorial, los roles, los privilegios, RLS, el seed
+y el corpus.
 
 Uso:
     python -m acxes.db.apply
@@ -21,6 +22,12 @@ _SQL_DIR = Path(__file__).parent
 
 def _run_file(conn: psycopg.Connection, name: str) -> None:
     conn.execute((_SQL_DIR / name).read_text(encoding="utf-8"))
+
+
+def _apply_vector(conn: psycopg.Connection, settings: Settings) -> None:
+    """Extensión pgvector y columna de embeddings con la dimensión de la configuración."""
+    text = (_SQL_DIR / "vector.sql").read_text(encoding="utf-8")
+    conn.execute(sql.SQL(text).format(dim=sql.Literal(settings.embedding_dim)))
 
 
 def _ensure_roles(conn: psycopg.Connection, settings: Settings) -> None:
@@ -53,6 +60,7 @@ def apply(settings: Settings | None = None, docs_dir: Path = DOCS_DIR) -> LoadSu
     verify_corpus(docs_dir)
     with psycopg.connect(postgres_dsn(settings), autocommit=True) as conn:
         _run_file(conn, "schema.sql")
+        _apply_vector(conn, settings)
         _ensure_roles(conn, settings)
         _run_file(conn, "grants.sql")
         _run_file(conn, "rls.sql")
@@ -68,5 +76,6 @@ if __name__ == "__main__":
         raise SystemExit(str(exc)) from exc
     print(
         "Esquema, roles, RLS y datos base aplicados. "
-        f"Corpus ingerido: {summary.documents} documentos y {summary.chunks} fragmentos."
+        f"Corpus ingerido: {summary.documents} documentos y {summary.chunks} fragmentos, "
+        f"{summary.embedded} con embedding."
     )

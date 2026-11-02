@@ -120,6 +120,19 @@ docker compose exec -T postgres psql -U acxes_owner -d acxes -c "SELECT full_nam
 
 Deberías ver seis usuarios (Sofía, Belén, Ángela, Laura, Carlos y Diego).
 
+### Opcional: búsqueda híbrida con embeddings
+
+Instala torch para CPU primero, para no descargar la versión con CUDA, y luego el extra:
+
+```
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -e ".[dev,embeddings]"
+```
+
+Pon `RETRIEVAL_MODE=hybrid` en `.env` y vuelve a correr `python -m acxes.db.apply`. La
+primera vez descarga el modelo `BAAI/bge-m3` (unos 2,3 GB) a la caché de Hugging Face.
+Al final debe decir que todos los fragmentos quedaron con embedding.
+
 ---
 
 ## 6. Corre los tests
